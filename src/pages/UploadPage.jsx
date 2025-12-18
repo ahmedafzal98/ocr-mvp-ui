@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import { toast } from "react-toastify";
+import { uploadDocument } from "../services/apiService";
 
 export default function UploadPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -12,9 +13,15 @@ export default function UploadPage() {
   const ws = useRef(null);
 
   const navigate = useNavigate();
+  
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+  const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 
+    (window.location.protocol === "https:" ? "wss" : "ws") + "://" + 
+    (import.meta.env.VITE_API_BASE_URL ? new URL(import.meta.env.VITE_API_BASE_URL).host : "127.0.0.1:8000");
 
   useEffect(() => {
-    ws.current = new WebSocket("ws://localhost:8000/ws/status");
+    const WS_URL = `${WS_BASE_URL}/ws/status`;
+    ws.current = new WebSocket(WS_URL);
 
     ws.current.onopen = () => console.log("WebSocket connected");
 
@@ -44,44 +51,25 @@ export default function UploadPage() {
 
   // Upload single file with progress
   const uploadFile = async (file) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("uploader_id", "test_user"); // optional
-
     try {
-      const res = await axios.post(
-        "http://127.0.0.1:8000/documents/upload",
-        formData,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-          timeout: 60000, // 60 second timeout
-          onUploadProgress: (progressEvent) => {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            setUploadingFiles((prev) => ({
-              ...prev,
-              [file.name]: percentCompleted,
-            }));
-          },
-        }
-      );
-
+      // Use the apiService which has proper configuration
+      const res = await uploadDocument(file);
+      
       toast.success(`${res.data.filename} uploaded successfully!`);
 
       // Start showing "Processing..." for this doc
       setProcessingStatus((prev) => ({
         ...prev,
-        [res.data.id]: "Waiting for processing...",
+        [res.data.id || res.data.doc_id]: "Waiting for processing...",
       }));
 
-      return { ...res.data, doc_id: res.data.id };
+      return { ...res.data, doc_id: res.data.id || res.data.doc_id };
     } catch (error) {
       console.error("Upload error:", error);
       let errorMessage = `Failed to upload ${file.name}`;
       
       if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
-        errorMessage = "Cannot connect to backend server. Please ensure the backend is running on http://127.0.0.1:8000";
+        errorMessage = `Cannot connect to backend server at ${API_BASE_URL}. Please check the backend URL.`;
       } else if (error.response) {
         errorMessage = `Upload failed: ${error.response.data?.detail || error.response.statusText}`;
       } else if (error.request) {
@@ -97,14 +85,17 @@ export default function UploadPage() {
   const uploadAllFiles = async () => {
     if (!selectedFiles.length) return;
 
-    for (const file of selectedFiles) {
-      await uploadFile(file);
-    }
+    const uploadPromises = selectedFiles.map(file => uploadFile(file));
+    await Promise.all(uploadPromises);
 
     // Clear selected files after upload
     setSelectedFiles([]);
     setUploadingFiles({});
-    navigate("/"); // redirect to dashboard
+    
+    // Wait a moment for documents to be saved, then redirect
+    setTimeout(() => {
+      navigate("/"); // redirect to dashboard
+    }, 1000);
   };
 
   return (

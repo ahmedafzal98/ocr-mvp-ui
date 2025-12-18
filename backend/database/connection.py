@@ -21,11 +21,22 @@ class DatabaseSettings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Construct database URL."""
-        # Handle empty password (common for local PostgreSQL)
-        if self.db_password:
-            return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        # Check if this is a Cloud SQL connection name (contains colons)
+        if ':' in self.db_host:
+            # Cloud SQL connection via Unix socket
+            # Format: project:region:instance
+            # Use Cloud SQL Proxy socket path
+            socket_path = f"/cloudsql/{self.db_host}"
+            if self.db_password:
+                return f"postgresql://{self.db_user}:{self.db_password}@/{self.db_name}?host={socket_path}"
+            else:
+                return f"postgresql://{self.db_user}@/{self.db_name}?host={socket_path}"
         else:
-            return f"postgresql://{self.db_user}@{self.db_host}:{self.db_port}/{self.db_name}"
+            # Regular TCP connection
+            if self.db_password:
+                return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+            else:
+                return f"postgresql://{self.db_user}@{self.db_host}:{self.db_port}/{self.db_name}"
 
 
 # Create database settings

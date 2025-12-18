@@ -8,12 +8,13 @@ import Modal from "../components/Modal";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import RealtimeIndicator from "../components/RealtimeIndicator";
 import { fetchDocuments } from "../services/documentService";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useModal } from "../hooks/useModal";
 
 export default function DocumentsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -86,12 +87,36 @@ export default function DocumentsPage() {
         console.log(`📋 Loaded ${docs.length} documents`);
       } catch (err) {
         console.error("Failed to fetch documents:", err);
+        // Set empty array on error to prevent UI issues
+        if (mounted) {
+          setDocuments([]);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
     getDocuments();
+    
+    // Refresh when component becomes visible (e.g., navigating back from upload page)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && mounted) {
+        console.log("🔄 Page visible, refreshing documents...");
+        getDocuments();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Also refresh when window gains focus
+    const handleFocus = () => {
+      if (mounted) {
+        console.log("🔄 Window focused, refreshing documents...");
+        getDocuments();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
     
     // Refresh documents every 30 seconds as fallback (in case WebSocket misses updates)
     const refreshInterval = setInterval(() => {
@@ -214,6 +239,8 @@ export default function DocumentsPage() {
     return () => {
       mounted = false;
       clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
@@ -224,6 +251,23 @@ export default function DocumentsPage() {
       }
     };
   }, []); // Empty dependency array - WebSocket connection is established once
+  
+  // Refresh documents when navigating back to this page
+  useEffect(() => {
+    if (location.pathname === '/') {
+      console.log("🔄 Dashboard page active, refreshing documents...");
+      const getDocuments = async () => {
+        try {
+          const response = await fetchDocuments();
+          setDocuments(response.documents || []);
+        } catch (err) {
+          console.error("Failed to fetch documents:", err);
+        }
+      };
+      // Small delay to ensure page is fully loaded
+      setTimeout(getDocuments, 500);
+    }
+  }, [location.pathname]);
 
   // --- Upload Handlers ---
   const handleUploadClick = () => navigate("/upload-document");

@@ -8,6 +8,9 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  timeout: 300000, // 5 minutes timeout for all requests
+  maxContentLength: Infinity, // Allow large content length
+  maxBodyLength: Infinity,    // Allow large body length
 });
 
 export const uploadDocument = (file, uploader_id) => {
