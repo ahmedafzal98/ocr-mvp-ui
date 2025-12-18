@@ -76,3 +76,23 @@ def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
 
+
+@app.get("/health/db")
+def health_check_db():
+    """Database health check endpoint."""
+    try:
+        from database.connection import engine
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        return {
+            "status": "healthy",
+            "database": "connected"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e),
+            "message": "Database connection failed. Please set DB environment variables: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME"
+        }
+

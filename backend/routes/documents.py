@@ -298,20 +298,29 @@ def list_documents(
     db: Session = Depends(get_db)
 ):
     """List all documents."""
-    documents = db.query(Document).order_by(Document.created_at.desc()).all()
-    
-    return {
-        "documents": [
-            {
-                "doc_id": doc.id,
-                "filename": doc.filename,
-                "status": doc.status,
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "completed_at": doc.updated_at.isoformat() if doc.status == "completed" and doc.updated_at else None,
-            }
-            for doc in documents
-        ]
-    }
+    try:
+        documents = db.query(Document).order_by(Document.created_at.desc()).all()
+        
+        return {
+            "documents": [
+                {
+                    "doc_id": doc.id,
+                    "filename": doc.filename,
+                    "status": doc.status,
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                    "completed_at": doc.updated_at.isoformat() if doc.status == "completed" and doc.updated_at else None,
+                }
+                for doc in documents
+            ]
+        }
+    except Exception as e:
+        logger.error(f"❌ Error listing documents: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database connection error: {str(e)}. Please check database environment variables (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME) are set correctly."
+        )
 
 
 @router.get("/{doc_id}")
