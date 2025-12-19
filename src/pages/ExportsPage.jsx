@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { fetchDocuments } from "../services/documentService";
+import { fetchExportById } from "../services/apiService";
+import Navbar from "../components/Navbar";
 
 export default function ExportsPage() {
   const [exportsList, setExportsList] = useState([]);
@@ -8,24 +10,39 @@ export default function ExportsPage() {
   useEffect(() => {
     async function fetchExports() {
       try {
-        // Note: Backend doesn't have a list exports endpoint yet
-        // For now, we'll fetch documents and their exports
-        const docsRes = await axios.get("http://127.0.0.1:8000/documents/");
-        const documents = docsRes.data.documents || [];
+        // Fetch documents using authenticated service
+        const docsRes = await fetchDocuments();
+        const documents = docsRes.documents || [];
         
         // Fetch export for each completed document
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+        const token = localStorage.getItem('auth_token');
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        
         const exportsPromises = documents
           .filter(doc => doc.status === 'completed')
           .map(async (doc) => {
             try {
-              const exportRes = await axios.get(`http://127.0.0.1:8000/exports/${doc.doc_id}`);
+              const exportRes = await fetch(`${API_BASE_URL}/exports/${doc.doc_id}`, {
+                headers: {
+                  ...authHeaders,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (!exportRes.ok) {
+                return null;
+              }
+              
+              const exportData = await exportRes.json();
               return {
-                export_id: exportRes.data.export_id,
+                export_id: exportData.export_id,
                 batch_or_doc: `Doc ${doc.doc_id}`,
-                generated_at: exportRes.data.created_at,
-                download_url: exportRes.data.signed_url
+                generated_at: exportData.created_at,
+                download_url: exportData.signed_url || exportData.file_content
               };
             } catch (err) {
+              console.error(`Error fetching export for doc ${doc.doc_id}:`, err);
               return null;
             }
           });
@@ -34,6 +51,9 @@ export default function ExportsPage() {
         setExportsList(exports);
       } catch (err) {
         console.error("Failed to fetch exports:", err);
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          window.location.href = '/login';
+        }
       } finally {
         setLoading(false);
       }
@@ -42,10 +62,24 @@ export default function ExportsPage() {
     fetchExports();
   }, []);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex justify-center items-center h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 text-lg">Loading exports...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6">
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-6 py-8">
       <h1 className="text-3xl font-bold text-gray-800 mb-6">Exports</h1>
 
       <div className="overflow-x-auto bg-white shadow-md rounded-lg">
