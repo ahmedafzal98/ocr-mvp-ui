@@ -93,13 +93,10 @@ export default function DocumentReviewPage() {
       
       // Check content type
       const contentType = response.headers.get('content-type') || '';
-
-      // Check content type to determine response format
-      const contentType = response.headers['content-type'] || '';
       
       if (contentType.includes('application/json')) {
         // JSON response (signed URL or base64)
-        const text = await response.data.text();
+        const text = await response.text();
         const jsonData = JSON.parse(text);
         
         if (jsonData.signed_url) {
