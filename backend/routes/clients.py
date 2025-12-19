@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database.connection import get_db
 from database.models import ClientProfile
+from auth import get_current_user
 import pandas as pd
 from io import BytesIO
 from datetime import datetime
@@ -20,7 +21,8 @@ logger = logging.getLogger(__name__)
 @router.post("/upload")
 async def upload_client_dataset(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Upload client dataset (CSV or XLSX).

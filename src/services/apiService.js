@@ -3,6 +3,7 @@ import axios from "axios";
 // Use environment variable for production, fallback to localhost for development
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
+// Create axios instance with interceptor to add auth token
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -12,6 +13,35 @@ const api = axios.create({
   maxContentLength: Infinity, // Allow large content length
   maxBodyLength: Infinity,    // Allow large body length
 });
+
+// Add request interceptor to include auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid, clear it and redirect to login
+      localStorage.removeItem('auth_token');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const uploadDocument = (file, uploader_id) => {
   const formData = new FormData();

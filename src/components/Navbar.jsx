@@ -1,8 +1,11 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout, isAuthenticated, user } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const isActive = (path) => location.pathname === path;
@@ -13,6 +16,11 @@ export default function Navbar() {
     { path: "/review-results", label: "Review", icon: "🔍" },
     { path: "/exports", label: "Exports", icon: "📥" },
   ];
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <nav className="bg-gradient-to-r from-blue-600 to-indigo-700 shadow-lg sticky top-0 z-40">
@@ -43,7 +51,7 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">
-            {navLinks.map((link) => (
+            {isAuthenticated && navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
@@ -57,6 +65,18 @@ export default function Navbar() {
                 <span>{link.label}</span>
               </Link>
             ))}
+            {isAuthenticated && (
+              <button
+                onClick={handleLogout}
+                className="flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-white hover:bg-red-500 hover:bg-opacity-50 transition-all duration-200 ml-2"
+                title="Logout"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>Logout</span>
+              </button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -92,7 +112,7 @@ export default function Navbar() {
         {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden py-4 space-y-2 animate-fadeIn">
-            {navLinks.map((link) => (
+            {isAuthenticated && navLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
@@ -107,6 +127,20 @@ export default function Navbar() {
                 <span>{link.label}</span>
               </Link>
             ))}
+            {isAuthenticated && (
+              <button
+                onClick={() => {
+                  handleLogout();
+                  setIsMenuOpen(false);
+                }}
+                className="flex items-center space-x-2 px-4 py-3 rounded-lg font-medium text-white hover:bg-red-500 hover:bg-opacity-50 transition-all w-full text-left"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         )}
       </div>

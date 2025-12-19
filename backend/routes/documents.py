@@ -11,6 +11,7 @@ from services.ocr_service import OCRService
 from services.extraction_service import ExtractionService
 from services.matching_service import MatchingService
 from services.export_service import ExportService
+from auth import get_current_user
 from pydantic import BaseModel
 from datetime import datetime
 import logging
@@ -38,7 +39,8 @@ class DocumentStatusResponse(BaseModel):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Upload a document for processing.
@@ -295,7 +297,8 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
 
 @router.get("/")
 def list_documents(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """List all documents."""
     try:
@@ -326,7 +329,8 @@ def list_documents(
 @router.get("/{doc_id}")
 def get_document(
     doc_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Get document details."""
     document = db.query(Document).filter(Document.id == doc_id).first()
@@ -348,7 +352,8 @@ def get_document(
 @router.get("/{doc_id}/status")
 def get_document_status(
     doc_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Get document processing status."""
     document = db.query(Document).filter(Document.id == doc_id).first()
@@ -368,7 +373,8 @@ def get_document_status(
 @router.get("/{doc_id}/extracted-fields")
 def get_extracted_fields(
     doc_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Get extracted fields for a document."""
     document = db.query(Document).filter(Document.id == doc_id).first()
@@ -403,7 +409,8 @@ def get_extracted_fields(
 
 @router.delete("/all")
 def delete_all_documents(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Delete all documents and their related data (extracted fields, matches, mismatches, exports).

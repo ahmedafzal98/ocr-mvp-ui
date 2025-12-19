@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import { toast } from "react-toastify";
+import { useAuth } from "../contexts/AuthContext";
 import { uploadDocument } from "../services/apiService";
 
 export default function UploadPage() {
@@ -13,6 +14,7 @@ export default function UploadPage() {
   const ws = useRef(null);
 
   const navigate = useNavigate();
+  const { getAuthHeaders } = useAuth();
   
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
   const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 
@@ -52,7 +54,7 @@ export default function UploadPage() {
   // Upload single file with progress
   const uploadFile = async (file) => {
     try {
-      // Use the apiService which has proper configuration
+      // Use the apiService which has proper configuration and auth headers
       const res = await uploadDocument(file);
       
       toast.success(`${res.data.filename} uploaded successfully!`);

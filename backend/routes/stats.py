@@ -6,13 +6,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database.connection import get_db
 from database.models import Document, Match, Mismatch
+from auth import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/")
 def get_stats(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Get system statistics."""
     # Count documents by status

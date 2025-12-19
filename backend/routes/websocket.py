@@ -1,12 +1,13 @@
 """
 WebSocket routes for real-time status updates.
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, status
 from typing import Dict, Set
 import json
 import asyncio
 from threading import Thread
 import queue
+from auth import verify_token
 
 router = APIRouter()
 
@@ -58,7 +59,20 @@ manager = ConnectionManager()
 
 @router.websocket("/ws/status")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time status updates."""
+    """WebSocket endpoint for real-time status updates. Requires authentication token."""
+    # Get token from query parameter or header
+    token = websocket.query_params.get("token") or websocket.headers.get("authorization", "").replace("Bearer ", "")
+    
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication required")
+        return
+    
+    # Verify token
+    payload = verify_token(token)
+    if not payload:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authentication token")
+        return
+    
     await manager.connect(websocket)
     
     # Start message queue processor for this connection

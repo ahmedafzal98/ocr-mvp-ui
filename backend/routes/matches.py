@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from database.models import Match, Document, ClientProfile, ExtractedField, Mismatch
+from auth import get_current_user
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -12,7 +13,8 @@ router = APIRouter(prefix="/matches", tags=["matches"])
 @router.get("/{doc_id}")
 def get_match_info(
     doc_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Get detailed match information for a document, including field-by-field matching."""
     # Check if document exists

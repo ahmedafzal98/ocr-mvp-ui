@@ -4,6 +4,7 @@ from .clients import router as clients_router
 from .exports import router as exports_router
 from .matches import router as matches_router
 from .stats import router as stats_router
+from .auth import router as auth_router
 
 __all__ = [
     "documents_router",
@@ -11,5 +12,6 @@ __all__ = [
     "exports_router",
     "matches_router",
     "stats_router",
+    "auth_router",
 ]
 

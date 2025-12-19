@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from database.connection import get_db
 from database.models import Export, Document
 from services.export_service import ExportService
+from auth import get_current_user
 from pydantic import BaseModel
 from typing import Optional
 import base64
@@ -31,7 +32,8 @@ class ExportResponse(BaseModel):
 @router.get("/{doc_id}")
 def get_export(
     doc_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Generate or retrieve Excel export for a document.

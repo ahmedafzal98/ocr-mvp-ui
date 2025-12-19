@@ -11,6 +11,7 @@ import { fetchDocuments } from "../services/documentService";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useModal } from "../hooks/useModal";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function DocumentsPage() {
   const navigate = useNavigate();
@@ -27,6 +28,7 @@ export default function DocumentsPage() {
   const excelInputRef = useRef(null);
   const ws = useRef(null);
   const { modal, openModal, closeModal, showConfirm } = useModal();
+  const { getAuthHeaders } = useAuth();
   
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -327,7 +329,9 @@ export default function DocumentsPage() {
     setDeleteError(null);
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/documents/all`);
+      const response = await axios.delete(`${API_BASE_URL}/documents/all`, {
+        headers: getAuthHeaders()
+      });
       
       // Show success message
       await openModal({

@@ -4,6 +4,7 @@ Main FastAPI application.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes import documents_router, clients_router, exports_router, matches_router, stats_router
+from routes.auth import router as auth_router
 from routes.websocket import router as websocket_router, process_message_queue
 from database.models import Base
 from database.connection import engine
@@ -37,6 +38,9 @@ app.add_middleware(
 )
 
 # Include routers
+# Auth router (public - no auth required)
+app.include_router(auth_router)
+# Protected routers (require authentication)
 app.include_router(documents_router)
 app.include_router(clients_router)
 app.include_router(exports_router)
