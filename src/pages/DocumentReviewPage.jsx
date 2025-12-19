@@ -3,8 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
 import { useModal } from "../hooks/useModal";
-import { fetchDocumentDetails, exportDocumentExcel } from "../services/documentService";
-import { fetchExportById } from "../services/apiService";
+// Removed unused imports - using fetch directly for better error handling
 
 export default function DocumentReviewPage() {
   const { docId } = useParams();
