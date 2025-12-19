@@ -131,7 +131,8 @@ export default function DocumentsPage() {
     // --- WebSocket for real-time status updates ---
     const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 
       (window.location.protocol === "https:" ? "wss" : "ws") + "://127.0.0.1:8000";
-    const WS_URL = `${WS_BASE_URL}/ws/status`;
+    const token = localStorage.getItem('auth_token');
+    const WS_URL = token ? `${WS_BASE_URL}/ws/status?token=${encodeURIComponent(token)}` : `${WS_BASE_URL}/ws/status`;
     
     let reconnectTimeout = null;
     let reconnectAttempts = 0;

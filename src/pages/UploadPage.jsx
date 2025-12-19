@@ -22,7 +22,8 @@ export default function UploadPage() {
     (import.meta.env.VITE_API_BASE_URL ? new URL(import.meta.env.VITE_API_BASE_URL).host : "127.0.0.1:8000");
 
   useEffect(() => {
-    const WS_URL = `${WS_BASE_URL}/ws/status`;
+    const token = localStorage.getItem('auth_token');
+    const WS_URL = token ? `${WS_BASE_URL}/ws/status?token=${encodeURIComponent(token)}` : `${WS_BASE_URL}/ws/status`;
     ws.current = new WebSocket(WS_URL);
 
     ws.current.onopen = () => console.log("WebSocket connected");
