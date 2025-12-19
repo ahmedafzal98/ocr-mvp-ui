@@ -2,10 +2,9 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
-import axios from "axios";
 import { useModal } from "../hooks/useModal";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+import { fetchDocumentDetails, exportDocumentExcel } from "../services/documentService";
+import { fetchExportById } from "../services/apiService";
 
 export default function DocumentReviewPage() {
   const { docId } = useParams();
@@ -21,22 +20,44 @@ export default function DocumentReviewPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const docRes = await axios.get(
-          `${API_BASE_URL}/documents/${docId}`
-        );
-        setDoc({ ...docRes.data.document, doc_id: docRes.data.document.doc_id || docId });
+        // Use documentService which includes auth headers
+        const document = await fetchDocumentById(docId);
+        if (document) {
+          setDoc({ ...document, doc_id: document.doc_id || docId });
+        }
 
-        const fieldsRes = await axios.get(
-          `${API_BASE_URL}/documents/${docId}/extracted-fields`
-        );
-        setFields(fieldsRes.data.fields || []);
+        // Fetch extracted fields with auth
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+        const token = localStorage.getItem('auth_token');
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        
+        const fieldsRes = await fetch(`${API_BASE_URL}/documents/${docId}/extracted-fields`, {
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (fieldsRes.ok) {
+          const fieldsData = await fieldsRes.json();
+          setFields(fieldsData.fields || []);
+        }
 
-        const matchRes = await axios.get(
-          `${API_BASE_URL}/matches/${docId}`
-        );
-        setMatchInfo(matchRes.data || null);
+        const matchRes = await fetch(`${API_BASE_URL}/matches/${docId}`, {
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (matchRes.ok) {
+          const matchData = await matchRes.json();
+          setMatchInfo(matchData || null);
+        }
       } catch (error) {
         console.error("Error fetching document data:", error);
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          // Redirect to login on auth errors
+          window.location.href = '/login';
+        }
       } finally {
         setLoading(false);
       }
@@ -50,13 +71,28 @@ export default function DocumentReviewPage() {
 
     setExporting(true);
     try {
+      // Use apiService which includes auth headers
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+      const token = localStorage.getItem('auth_token');
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      
       // First, try to get the export (might be direct download or signed URL)
-      const response = await axios.get(
+      const response = await fetch(
         `${API_BASE_URL}/exports/${doc.doc_id || doc.id}`,
         {
-          responseType: 'blob' // Always expect blob for Excel files
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
         }
       );
+      
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+      
+      // Check content type
+      const contentType = response.headers.get('content-type') || '';
 
       // Check content type to determine response format
       const contentType = response.headers['content-type'] || '';
