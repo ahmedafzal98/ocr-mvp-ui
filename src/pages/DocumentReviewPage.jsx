@@ -19,18 +19,42 @@ export default function DocumentReviewPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+      const token = localStorage.getItem('auth_token');
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      if (!token) {
+        console.error("No auth token found, redirecting to login");
+        window.location.href = '/login';
+        return;
+      }
+
       try {
-        // Use documentService which includes auth headers
-        const document = await fetchDocumentById(docId);
-        if (document) {
-          setDoc({ ...document, doc_id: document.doc_id || docId });
+        // Fetch document details with auth
+        const docRes = await fetch(`${API_BASE_URL}/documents/${docId}`, {
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!docRes.ok) {
+          if (docRes.status === 401 || docRes.status === 403) {
+            console.error("Authentication failed, redirecting to login");
+            window.location.href = '/login';
+            return;
+          }
+          throw new Error(`Failed to fetch document: ${docRes.status} ${docRes.statusText}`);
+        }
+
+        const docData = await docRes.json();
+        if (docData.document) {
+          setDoc({ ...docData.document, doc_id: docData.document.doc_id || docId });
+        } else {
+          throw new Error("Document data not found in response");
         }
 
         // Fetch extracted fields with auth
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-        const token = localStorage.getItem('auth_token');
-        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-        
         const fieldsRes = await fetch(`${API_BASE_URL}/documents/${docId}/extracted-fields`, {
           headers: {
             ...authHeaders,
@@ -40,8 +64,11 @@ export default function DocumentReviewPage() {
         if (fieldsRes.ok) {
           const fieldsData = await fieldsRes.json();
           setFields(fieldsData.fields || []);
+        } else if (fieldsRes.status === 401 || fieldsRes.status === 403) {
+          console.warn("Failed to fetch fields: authentication error");
         }
 
+        // Fetch match info with auth
         const matchRes = await fetch(`${API_BASE_URL}/matches/${docId}`, {
           headers: {
             ...authHeaders,
@@ -51,13 +78,18 @@ export default function DocumentReviewPage() {
         if (matchRes.ok) {
           const matchData = await matchRes.json();
           setMatchInfo(matchData || null);
+        } else if (matchRes.status === 401 || matchRes.status === 403) {
+          console.warn("Failed to fetch match info: authentication error");
         }
       } catch (error) {
         console.error("Error fetching document data:", error);
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          // Redirect to login on auth errors
-          window.location.href = '/login';
-        }
+        await openModal({
+          title: "Error Loading Document",
+          message: error.message || "Failed to load document. Please try again.",
+          type: "error",
+          confirmText: "OK",
+        });
+        // Don't set doc to null here, let the error message show
       } finally {
         setLoading(false);
       }
@@ -155,8 +187,35 @@ export default function DocumentReviewPage() {
     }
   };
 
-  if (loading) return <p className="text-gray-500 p-6">Loading document...</p>;
-  if (!doc) return <p className="text-red-500 p-6">Document not found.</p>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-500 text-lg">Loading document...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!doc) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="bg-white shadow rounded p-6 text-center">
+            <p className="text-red-500 text-lg mb-4">Document not found.</p>
+            <button
+              onClick={() => navigate("/")}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
