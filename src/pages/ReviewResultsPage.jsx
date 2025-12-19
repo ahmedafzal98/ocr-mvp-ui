@@ -23,13 +23,27 @@ export default function ReviewResultsPage() {
         const docsRes = await fetchDocuments();
         const docs = docsRes.documents;
 
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+        const token = localStorage.getItem('auth_token');
+        const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+        
         const docsWithFields = await Promise.all(
           docs.map(async (doc) => {
             try {
-              const fieldsRes = await axios.get(
-                `http://127.0.0.1:8000/documents/${doc.doc_id}/extracted-fields`
+              const fieldsRes = await fetch(
+                `${API_BASE_URL}/documents/${doc.doc_id}/extracted-fields`,
+                {
+                  headers: {
+                    ...authHeaders,
+                    'Content-Type': 'application/json'
+                  }
+                }
               );
-              const fields = fieldsRes.data.fields || [];
+              if (!fieldsRes.ok) {
+                throw new Error(`Failed to fetch fields: ${fieldsRes.statusText}`);
+              }
+              const fieldsData = await fieldsRes.json();
+              const fields = fieldsData.fields || [];
               const nameField = fields.find(
                 (f) => f.field_name === "patient_name"
               );
@@ -85,12 +99,27 @@ export default function ReviewResultsPage() {
         return;
       }
       
-      const res = await axios.get(
-        `http://127.0.0.1:8000/exports/${completedDoc.doc_id}`
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+      const token = localStorage.getItem('auth_token');
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      const res = await fetch(
+        `${API_BASE_URL}/exports/${completedDoc.doc_id}`,
+        {
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
       );
       
-      if (res.data.signed_url) {
-        window.open(res.data.signed_url, '_blank');
+      if (!res.ok) {
+        throw new Error(`Export failed: ${res.statusText}`);
+      }
+      
+      const exportData = await res.json();
+      if (exportData.signed_url) {
+        window.open(exportData.signed_url, '_blank');
       } else {
         alert("Export URL not available");
       }
