@@ -130,7 +130,7 @@ export default function DocumentReviewPage() {
         }
       } else {
         // Direct blob download (Excel file)
-        const blob = response.data;
+        const blob = await response.blob();
         const filename = `report_${doc.doc_id || doc.id}_${new Date().toISOString().split('T')[0]}.xlsx`;
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
