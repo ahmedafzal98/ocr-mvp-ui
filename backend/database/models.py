@@ -50,6 +50,7 @@ class ExtractedField(Base):
     raw_value = Column(Text, nullable=True)
     normalized_value = Column(Text, nullable=True)
     confidence_score = Column(Float, nullable=True)
+    page_number = Column(Integer, nullable=True, default=1)  # Page number where field was found
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
@@ -89,6 +90,7 @@ class Mismatch(Base):
     field = Column(String(50), nullable=False)  # 'dob', 'doa'
     expected_value = Column(Text, nullable=True)
     observed_value = Column(Text, nullable=True)
+    page_number = Column(Integer, nullable=True, default=1)  # Page number where mismatch was found
     created_at = Column(DateTime, default=func.now())
 
     # Relationships

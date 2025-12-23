@@ -119,7 +119,9 @@ class MatchingService:
         dob_field = extracted_fields.get('dob')
         if dob_field:
             extracted_dob = dob_field.get('normalized_value')
-            expected_dob = client.dob.strftime('%Y-%m-%d') if client.dob else None
+            # Convert expected date to MM/DD/YYYY format to match extracted format
+            expected_dob = client.dob.strftime('%m/%d/%Y') if client.dob else None
+            page_number = dob_field.get('page_number', 1)
             
             if expected_dob and extracted_dob:
                 if extracted_dob != expected_dob:
@@ -127,20 +129,24 @@ class MatchingService:
                         doc_id=doc_id,
                         field='dob',
                         expected_value=expected_dob,
-                        observed_value=extracted_dob
+                        observed_value=extracted_dob,
+                        page_number=page_number
                     )
                     db.add(mismatch)
                     mismatches.append({
                         'field': 'dob',
                         'expected': expected_dob,
-                        'observed': extracted_dob
+                        'observed': extracted_dob,
+                        'page_number': page_number
                     })
         
         # Check DoA mismatch
         doa_field = extracted_fields.get('doa')
         if doa_field:
             extracted_doa = doa_field.get('normalized_value')
-            expected_doa = client.doa.strftime('%Y-%m-%d') if client.doa else None
+            # Convert expected date to MM/DD/YYYY format to match extracted format
+            expected_doa = client.doa.strftime('%m/%d/%Y') if client.doa else None
+            page_number = doa_field.get('page_number', 1)
             
             if expected_doa and extracted_doa:
                 if extracted_doa != expected_doa:
@@ -148,13 +154,15 @@ class MatchingService:
                         doc_id=doc_id,
                         field='doa',
                         expected_value=expected_doa,
-                        observed_value=extracted_doa
+                        observed_value=extracted_doa,
+                        page_number=page_number
                     )
                     db.add(mismatch)
                     mismatches.append({
                         'field': 'doa',
                         'expected': expected_doa,
-                        'observed': extracted_doa
+                        'observed': extracted_doa,
+                        'page_number': page_number
                     })
         
         db.commit()

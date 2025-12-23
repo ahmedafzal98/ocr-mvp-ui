@@ -15,6 +15,40 @@ export default function DocumentReviewPage() {
   const [exporting, setExporting] = useState(false);
   const { modal, openModal, closeModal } = useModal();
 
+  // Helper function to format dates to MM/DD/YYYY
+  const formatDateToMMDDYYYY = (dateStr) => {
+    if (!dateStr || dateStr === 'N/A' || dateStr === 'Not available') {
+      return dateStr;
+    }
+    
+    // If already in MM/DD/YYYY format, return as-is
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      return dateStr;
+    }
+    
+    // Try to parse and format the date
+    try {
+      // Handle YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [year, month, day] = dateStr.split('-');
+        return `${month}/${day}/${year}`;
+      }
+      
+      // Try parsing as Date object
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}/${day}/${year}`;
+      }
+    } catch (e) {
+      // If parsing fails, return original string
+    }
+    
+    return dateStr;
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -274,7 +308,20 @@ export default function DocumentReviewPage() {
           <h3 className="text-xl font-semibold mb-4">Extracted Fields</h3>
           {fields.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {fields.map((field, idx) => (
+              {fields
+                .filter((field) => {
+                  // Only show: Patient Name, Date of Birth, Date of Accident
+                  const fieldName = field.field_name?.toLowerCase() || '';
+                  return (
+                    fieldName.includes('patient') ||
+                    fieldName.includes('name') ||
+                    fieldName === 'dob' ||
+                    fieldName === 'date of birth' ||
+                    fieldName === 'doa' ||
+                    fieldName === 'date of accident'
+                  );
+                })
+                .map((field, idx) => (
                 <div
                   key={idx}
                   className="p-4 border rounded bg-gray-50 hover:bg-gray-100 transition"
@@ -282,12 +329,34 @@ export default function DocumentReviewPage() {
                   <p className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-2">
                     {field.field_name}
                   </p>
-                  <p className="font-semibold text-gray-900 text-lg mb-1">
-                    {field.value_raw || "-"}
-                  </p>
+                  <div className="flex items-start justify-between mb-1">
+                    <p className="font-semibold text-gray-900 text-lg">
+                      {/* Format dates to MM/DD/YYYY */}
+                      {(field.field_name?.toLowerCase().includes('date') || 
+                        field.field_name === 'Date of Birth' || 
+                        field.field_name === 'Date of Accident' ||
+                        field.field_name?.toLowerCase() === 'dob' ||
+                        field.field_name?.toLowerCase() === 'doa')
+                        ? formatDateToMMDDYYYY(field.value_raw || "-")
+                        : field.value_raw || "-"}
+                    </p>
+                    {field.page_num && (
+                      <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded ml-2">
+                        📄 Page {field.page_num}
+                      </span>
+                    )}
+                  </div>
                   {field.value_norm && field.value_norm !== field.value_raw && (
                     <p className="text-sm text-gray-500 mb-1">
-                      Normalized: {field.value_norm}
+                      Normalized: {
+                        (field.field_name?.toLowerCase().includes('date') || 
+                         field.field_name === 'Date of Birth' || 
+                         field.field_name === 'Date of Accident' ||
+                         field.field_name?.toLowerCase() === 'dob' ||
+                         field.field_name?.toLowerCase() === 'doa')
+                        ? formatDateToMMDDYYYY(field.value_norm)
+                        : field.value_norm
+                      }
                     </p>
                   )}
                   {field.confidence !== null && (
@@ -311,6 +380,49 @@ export default function DocumentReviewPage() {
             </div>
           )}
         </div>
+
+        {/* Mismatches Summary */}
+        {matchInfo && matchInfo.mismatches && matchInfo.mismatches.length > 0 && (
+          <div className="bg-red-50 border-l-4 border-red-500 shadow rounded p-5">
+            <h3 className="text-xl font-semibold mb-4 text-red-700">
+              ⚠️ Mismatches Detected
+            </h3>
+            <div className="space-y-3">
+              {matchInfo.mismatches.map((mismatch, idx) => (
+                <div key={idx} className="bg-white rounded p-4 border border-red-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900 capitalize mb-1">
+                        {mismatch.field === 'dob' ? 'Date of Birth' : mismatch.field === 'doa' ? 'Date of Accident' : mismatch.field}
+                      </p>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Expected Value</p>
+                          <p className="text-sm font-medium text-gray-700">
+                            {formatDateToMMDDYYYY(mismatch.expected_value || 'N/A')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Observed Value</p>
+                          <p className="text-sm font-medium text-red-700">
+                            {formatDateToMMDDYYYY(mismatch.observed_value || 'N/A')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {mismatch.page_number && (
+                      <div className="ml-4 bg-red-100 px-3 py-1 rounded">
+                        <p className="text-xs font-semibold text-red-700">
+                          Page {mismatch.page_number}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Match Info */}
         <div className="bg-white shadow rounded p-5">
@@ -393,7 +505,12 @@ export default function DocumentReviewPage() {
                     Field-by-Field Matching
                   </h4>
                   <div className="space-y-3">
-                    {Object.entries(matchInfo.field_matches).map(([fieldKey, fieldData]) => {
+                    {Object.entries(matchInfo.field_matches)
+                      .filter(([fieldKey, fieldData]) => {
+                        // Only show: patient_name, dob, doa (exclude referral)
+                        return ['patient_name', 'dob', 'doa'].includes(fieldKey);
+                      })
+                      .map(([fieldKey, fieldData]) => {
                       const getStatusIcon = () => {
                         if (fieldData.is_match === true) return "✅";
                         if (fieldData.is_match === false) return "❌";
@@ -451,11 +568,21 @@ export default function DocumentReviewPage() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
                             {/* Extracted Value */}
                             <div className="bg-white rounded p-3 border border-gray-200">
-                              <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">
-                                Extracted from Document
-                              </p>
+                              <div className="flex items-start justify-between mb-1">
+                                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                  Extracted from Document
+                                </p>
+                                {fieldData.page_number && (
+                                  <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
+                                    📄 Page {fieldData.page_number}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm font-semibold text-gray-900">
-                                {fieldData.extracted_value || "—"}
+                                {/* Format date if it's a date field */}
+                                {(fieldKey === 'dob' || fieldKey === 'doa') 
+                                  ? formatDateToMMDDYYYY(fieldData.extracted_value) 
+                                  : fieldData.extracted_value || "—"}
                               </p>
                             </div>
 
@@ -471,7 +598,10 @@ export default function DocumentReviewPage() {
                                   ? "text-green-700"
                                   : "text-gray-600"
                               }`}>
-                                {fieldData.expected_value || "Not available"}
+                                {/* Format date if it's a date field */}
+                                {(fieldKey === 'dob' || fieldKey === 'doa') 
+                                  ? formatDateToMMDDYYYY(fieldData.expected_value || "Not available")
+                                  : fieldData.expected_value || "Not available"}
                               </p>
                             </div>
                           </div>
@@ -481,6 +611,11 @@ export default function DocumentReviewPage() {
                             <div className="mt-3 p-2 bg-red-100 rounded border border-red-300">
                               <p className="text-xs text-red-700 font-medium">
                                 ⚠️ Mismatch detected: The extracted value does not match the expected value from the dataset.
+                                {fieldData.page_number && (
+                                  <span className="ml-2 font-semibold">
+                                    (Found on page {fieldData.page_number})
+                                  </span>
+                                )}
                               </p>
                             </div>
                           )}

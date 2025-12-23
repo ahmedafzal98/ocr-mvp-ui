@@ -118,6 +118,9 @@ class OCRService:
                 entity_list = list(document.entities) if document.entities else []
                 ocr_logger.info(f"📋 Processing {len(entity_list)} entities from Document AI")
                 
+                # Map to track page numbers for each entity type
+                entity_pages = {}
+                
                 for idx, entity in enumerate(entity_list):
                     # Get entity type - try multiple attributes
                     entity_type = 'unknown'
@@ -128,6 +131,89 @@ class OCRService:
                     
                     entity_value = ''
                     confidence = 0.0
+                    page_number = 1  # Default to page 1
+                    
+                    # Extract page number from entity
+                    # Document AI page numbers are 0-indexed, so we add 1
+                    if hasattr(entity, 'page_anchor') and entity.page_anchor:
+                        if hasattr(entity.page_anchor, 'page_refs') and entity.page_anchor.page_refs:
+                            # Get first page reference
+                            page_ref = entity.page_anchor.page_refs[0]
+                            if hasattr(page_ref, 'page'):
+                                # page_ref.page can be:
+                                # 1. An integer (0-indexed page number)
+                                # 2. A string like "projects/.../pages/1"
+                                # 3. A Page object with page_number attribute
+                                
+                                page_value = page_ref.page
+                                
+                                # Case 1: Direct integer (0-indexed)
+                                if isinstance(page_value, int):
+                                    page_number = page_value + 1  # Convert to 1-indexed
+                                # Case 2: String format
+                                elif isinstance(page_value, str):
+                                    import re
+                                    page_match = re.search(r'pages[/-](\d+)', page_value)
+                                    if page_match:
+                                        # Extract and convert (may be 0-indexed or 1-indexed)
+                                        extracted_page = int(page_match.group(1))
+                                        # If it's 0, assume 0-indexed; otherwise assume 1-indexed
+                                        page_number = extracted_page + 1 if extracted_page == 0 else extracted_page
+                                    else:
+                                        # Try direct conversion
+                                        try:
+                                            page_num = int(page_value)
+                                            page_number = page_num + 1 if page_num == 0 else page_num
+                                        except:
+                                            page_number = 1
+                                # Case 3: Page object with page_number attribute
+                                elif hasattr(page_value, 'page_number'):
+                                    page_num = page_value.page_number
+                                    page_number = page_num + 1 if isinstance(page_num, int) and page_num == 0 else (page_num if isinstance(page_num, int) else 1)
+                                else:
+                                    # Fallback: try to get page number from text position
+                                    page_number = 1
+                            else:
+                                page_number = 1
+                        else:
+                            page_number = 1
+                    elif hasattr(entity, 'text_anchor') and entity.text_anchor:
+                        # Try to infer page from text position using text_anchor
+                        # Document AI text_anchor has text_segments with start_index
+                        # We can map this to pages by checking which page the text belongs to
+                        if hasattr(entity.text_anchor, 'text_segments') and entity.text_anchor.text_segments:
+                            segment = entity.text_anchor.text_segments[0]
+                            if hasattr(segment, 'start_index'):
+                                text_index = segment.start_index
+                                # Map text index to page number using document.pages
+                                if hasattr(document, 'pages') and document.pages:
+                                    # Try to find which page contains this text index
+                                    found_page = False
+                                    for page_idx, page in enumerate(document.pages):
+                                        # Each page has a layout with text_anchor that defines its text range
+                                        if hasattr(page, 'layout') and hasattr(page.layout, 'text_anchor'):
+                                            if hasattr(page.layout.text_anchor, 'text_segments'):
+                                                for page_seg in page.layout.text_anchor.text_segments:
+                                                    if (hasattr(page_seg, 'start_index') and 
+                                                        hasattr(page_seg, 'end_index')):
+                                                        if page_seg.start_index <= text_index <= page_seg.end_index:
+                                                            page_number = page_idx + 1  # 0-indexed to 1-indexed
+                                                            found_page = True
+                                                            ocr_logger.info(f"   Entity {idx+1}: Mapped text index {text_index} to page {page_number} (page_idx={page_idx})")
+                                                            break
+                                                if found_page:
+                                                    break
+                                    if not found_page:
+                                        ocr_logger.warning(f"   Entity {idx+1}: Could not map text index {text_index} to page, defaulting to page 1")
+                                        page_number = 1
+                                else:
+                                    page_number = 1
+                            else:
+                                page_number = 1
+                        else:
+                            page_number = 1
+                    else:
+                        page_number = 1
                     
                     # PRIORITY: Use mention_text first (most reliable, like old code)
                     if hasattr(entity, 'mention_text') and entity.mention_text:
@@ -159,15 +245,17 @@ class OCRService:
                     elif hasattr(entity, 'confidence_score'):
                         confidence = entity.confidence_score
                     
-                    ocr_logger.info(f"   Entity {idx+1}: type={entity_type}, value={entity_value[:50] if entity_value else 'N/A'}, confidence={confidence:.2f}")
+                    ocr_logger.info(f"   Entity {idx+1}: type={entity_type}, value={entity_value[:50] if entity_value else 'N/A'}, confidence={confidence:.2f}, page={page_number}")
                     
                     if entity_type and entity_value:
                         # Keep the entity with highest confidence if duplicate types
                         if entity_type not in entities or entities[entity_type].get('confidence', 0) < confidence:
                             entities[entity_type] = {
                                 'value': entity_value,
-                                'confidence': confidence
+                                'confidence': confidence,
+                                'page_number': page_number
                             }
+                            entity_pages[entity_type] = page_number
             else:
                 ocr_logger.warning("⚠️  Document does not have 'entities' attribute")
             
@@ -176,6 +264,7 @@ class OCRService:
             return {
                 'full_text': full_text,
                 'entities': entities,
+                'entity_pages': entity_pages,  # Map of entity_type -> page_number
                 'pages': len(document.pages) if hasattr(document, 'pages') and document.pages else 0,
                 'success': True
             }

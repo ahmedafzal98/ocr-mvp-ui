@@ -201,11 +201,13 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
             preview = full_text[:500].replace('\n', '\\n')
             logger.info(f"📝 OCR Text Preview (first 500 chars): {preview}")
         
-        # Print entities found
+        # Print entities found with page numbers
         if entities:
             logger.info("📋 Entities from Document AI:")
+            entity_pages = ocr_result.get('entity_pages', {})
             for entity_type, entity_data in entities.items():
-                logger.info(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)})")
+                page_num = entity_pages.get(entity_type, entity_data.get('page_number', 1))
+                logger.info(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})")
         
         # Extract fields
         logger.info("📝 Extracting fields from OCR result...")
@@ -222,6 +224,7 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
                 logger.info(f"    Raw Value: {field_data.get('raw_value', 'N/A')}")
                 logger.info(f"    Normalized Value: {field_data.get('normalized_value', 'N/A')}")
                 logger.info(f"    Confidence: {field_data.get('confidence', 0)}")
+                logger.info(f"    Page Number: {field_data.get('page_number', 1)}")
                 logger.info("")
         else:
             logger.warning("⚠️  NO FIELDS EXTRACTED!")
@@ -236,7 +239,8 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
                 field_name=field_name,
                 raw_value=field_data.get('raw_value'),
                 normalized_value=field_data.get('normalized_value'),
-                confidence_score=field_data.get('confidence')
+                confidence_score=field_data.get('confidence'),
+                page_number=field_data.get('page_number', 1)  # Save page number
             )
             db.add(extracted_field)
         
@@ -382,15 +386,17 @@ def get_extracted_fields(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    fields = db.query(ExtractedField).filter(ExtractedField.doc_id == doc_id).all()
+    # Only get the 3 fields: patient_name, dob, doa (exclude referral and service_dates)
+    fields = db.query(ExtractedField).filter(
+        ExtractedField.doc_id == doc_id,
+        ExtractedField.field_name.in_(['patient_name', 'dob', 'doa'])
+    ).all()
     
     # Format field names for better display
     field_name_map = {
         'patient_name': 'Patient Name',
         'dob': 'Date of Birth',
-        'doa': 'Date of Accident',
-        'referral': 'Referral Number',
-        'service_dates': 'Service Dates'
+        'doa': 'Date of Accident'
     }
     
     return {
@@ -400,7 +406,7 @@ def get_extracted_fields(
                 "value_raw": field.raw_value,
                 "value_norm": field.normalized_value,
                 "confidence": field.confidence_score,
-                "page_num": 1  # Default, can be enhanced later
+                "page_num": field.page_number if field.page_number else 1
             }
             for field in fields
         ]

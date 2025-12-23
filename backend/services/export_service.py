@@ -85,8 +85,8 @@ class ExportService:
                 ClientProfile.id == matched_client_id
             ).first()
             if client:
-                expected_dob = client.dob.strftime('%Y-%m-%d') if client.dob else None
-                expected_doa = client.doa.strftime('%Y-%m-%d') if client.doa else None
+                expected_dob = client.dob.strftime('%m/%d/%Y') if client.dob else None
+                expected_doa = client.doa.strftime('%m/%d/%Y') if client.doa else None
         
         # Get mismatches
         mismatches = db.query(Mismatch).filter(Mismatch.doc_id == doc_id).all()
@@ -99,23 +99,17 @@ class ExportService:
             if client:
                 client_name = client.name
         
-        # Prepare extracted field data
+        # Prepare extracted field data (only the 3 fields: name, dob, doa)
         extracted_name = fields_dict.get('patient_name', {}).get('normalized_value', '') or fields_dict.get('patient_name', {}).get('raw_value', '')
         extracted_dob = fields_dict.get('dob', {}).get('normalized_value', '') or fields_dict.get('dob', {}).get('raw_value', '')
         extracted_doa = fields_dict.get('doa', {}).get('normalized_value', '') or fields_dict.get('doa', {}).get('raw_value', '')
-        extracted_referral = fields_dict.get('referral', {}).get('normalized_value', '') or fields_dict.get('referral', {}).get('raw_value', '')
-        
-        # Handle service_dates (might be a list)
-        service_dates_field = fields_dict.get('service_dates', {})
-        service_dates = service_dates_field.get('normalized_value', '') or service_dates_field.get('raw_value', '')
-        if isinstance(service_dates, list):
-            service_dates = '; '.join(str(d) for d in service_dates if d)
         
         # Get confidence scores
         name_confidence = fields_dict.get('patient_name', {}).get('confidence', 0)
         dob_confidence = fields_dict.get('dob', {}).get('confidence', 0)
         doa_confidence = fields_dict.get('doa', {}).get('confidence', 0)
-        referral_confidence = fields_dict.get('referral', {}).get('confidence', 0)
+        
+        # Note: service_dates and referral are no longer included
         
         # Determine match status for each field
         dob_match_status = 'Matched'
@@ -147,37 +141,32 @@ class ExportService:
             'Matched Client Name': [client_name if client_name else 'N/A'],
         }
         
-        # Create field-by-field DataFrame
+        # Create field-by-field DataFrame (only 3 fields: name, dob, doa)
         fields_data = {
             'Field Name': [
                 'Patient Name',
                 'Date of Birth',
-                'Date of Accident',
-                'Referral Number'
+                'Date of Accident'
             ],
             'Extracted Value': [
                 extracted_name,
                 extracted_dob,
-                extracted_doa,
-                extracted_referral
+                extracted_doa
             ],
             'Expected Value (from Dataset)': [
                 client_name if client_name else 'N/A',
                 expected_dob if expected_dob else 'Not in Dataset',
-                expected_doa if expected_doa else 'Not in Dataset',
-                'N/A (Not checked)'
+                expected_doa if expected_doa else 'Not in Dataset'
             ],
             'Match Status': [
                 name_match_status,
                 dob_match_status,
-                doa_match_status,
-                'N/A'
+                doa_match_status
             ],
             'Confidence (%)': [
                 f"{(name_confidence * 100):.1f}" if name_confidence else "N/A",
                 f"{(dob_confidence * 100):.1f}" if dob_confidence else "N/A",
-                f"{(doa_confidence * 100):.1f}" if doa_confidence else "N/A",
-                f"{(referral_confidence * 100):.1f}" if referral_confidence else "N/A"
+                f"{(doa_confidence * 100):.1f}" if doa_confidence else "N/A"
             ]
         }
         
@@ -188,14 +177,8 @@ class ExportService:
                 'Field': [m.field.upper() for m in mismatches],
                 'Expected Value': [m.expected_value for m in mismatches],
                 'Observed Value': [m.observed_value for m in mismatches],
+                'Page Number': [m.page_number if m.page_number else 1 for m in mismatches],
                 'Mismatch Type': ['Date Mismatch' for _ in mismatches]
-            }
-        
-        # Create service dates DataFrame if available
-        service_dates_data = None
-        if service_dates:
-            service_dates_data = {
-                'Service Dates': [service_dates]
             }
         
         # Generate Excel file in memory
@@ -215,10 +198,7 @@ class ExportService:
                 df_mismatches = pd.DataFrame(mismatches_data)
                 df_mismatches.to_excel(writer, index=False, sheet_name='Mismatches')
             
-            # Write Service Dates sheet if available
-            if service_dates_data:
-                df_service = pd.DataFrame(service_dates_data)
-                df_service.to_excel(writer, index=False, sheet_name='Service Dates')
+            # Service Dates sheet removed - only showing 3 fields now
         
         # Apply formatting
         excel_buffer.seek(0)
@@ -234,9 +214,7 @@ class ExportService:
         if 'Mismatches' in workbook.sheetnames:
             self._format_mismatches_sheet(workbook['Mismatches'])
         
-        # Format Service Dates sheet if exists
-        if 'Service Dates' in workbook.sheetnames:
-            self._format_service_dates_sheet(workbook['Service Dates'])
+        # Service Dates sheet removed - only showing 3 fields now
         
         # Save formatted workbook
         excel_buffer = io.BytesIO()
