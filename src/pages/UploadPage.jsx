@@ -6,11 +6,14 @@ import Navbar from "../components/Navbar";
 import { toast } from "react-toastify";
 import { useAuth } from "../contexts/AuthContext";
 import { uploadDocument } from "../services/apiService";
+import FullScreenLoader from "../components/FullScreenLoader";
 
 export default function UploadPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadingFiles, setUploadingFiles] = useState({});
   const [processingStatus, setProcessingStatus] = useState({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const ws = useRef(null);
 
   const navigate = useNavigate();
@@ -53,12 +56,14 @@ export default function UploadPage() {
   };
 
   // Upload single file with progress
-  const uploadFile = async (file) => {
+  const uploadFile = async (file, suppressToasts = false) => {
     try {
       // Use the apiService which has proper configuration and auth headers
       const res = await uploadDocument(file);
       
-      toast.success(`${res.data.filename} uploaded successfully!`);
+      if (!suppressToasts) {
+        toast.success(`${res.data.filename} uploaded successfully!`);
+      }
 
       // Start showing "Processing..." for this doc
       setProcessingStatus((prev) => ({
@@ -79,8 +84,12 @@ export default function UploadPage() {
         errorMessage = "No response from server. Please check if the backend is running.";
       }
       
-      toast.error(errorMessage);
-      return null;
+      if (!suppressToasts) {
+        toast.error(errorMessage);
+      }
+      
+      // Return error info for handling in uploadAllFiles
+      return { error: errorMessage, fileName: file.name };
     }
   };
 
@@ -88,21 +97,53 @@ export default function UploadPage() {
   const uploadAllFiles = async () => {
     if (!selectedFiles.length) return;
 
-    const uploadPromises = selectedFiles.map(file => uploadFile(file));
-    await Promise.all(uploadPromises);
+    // Show loader immediately
+    setIsUploading(true);
+    setUploadError(null);
 
-    // Clear selected files after upload
-    setSelectedFiles([]);
-    setUploadingFiles({});
-    
-    // Wait a moment for documents to be saved, then redirect
-    setTimeout(() => {
-      navigate("/"); // redirect to dashboard
-    }, 1000);
+    try {
+      // Upload all files (suppress individual toasts during batch upload)
+      const uploadPromises = selectedFiles.map(file => uploadFile(file, true));
+      const results = await Promise.all(uploadPromises);
+
+      // Check if any uploads failed
+      const failedUploads = results.filter(result => result?.error);
+      if (failedUploads.length > 0) {
+        const errorMessages = failedUploads.map(r => r.error || r.fileName).join(", ");
+        throw new Error(`Failed to upload ${failedUploads.length} file(s): ${errorMessages}`);
+      }
+
+      // All uploads succeeded
+      // Clear selected files after upload
+      setSelectedFiles([]);
+      setUploadingFiles({});
+      
+      // Show success message briefly, then redirect
+      toast.success(`Successfully uploaded ${results.length} file(s)!`);
+      
+      // Keep loader visible briefly, then redirect
+      setTimeout(() => {
+        setIsUploading(false);
+        navigate("/"); // redirect to dashboard
+      }, 800);
+    } catch (error) {
+      // Hide loader and show error
+      setIsUploading(false);
+      const errorMessage = error.message || "Upload failed. Please try again.";
+      setUploadError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Full-screen loader */}
+      <FullScreenLoader 
+        show={isUploading}
+        message={uploadError || "Uploading & processing your document…"}
+        spinnerColor={uploadError ? "red" : "blue"}
+      />
+      
       <Navbar />
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         {/* Header */}
