@@ -138,7 +138,9 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
     from services.extraction_service import ExtractionService
     from services.matching_service import MatchingService
     
-    # Initialize services
+    db = SessionLocal()
+    
+    # Initialize services - ensure we can update status even if this fails
     try:
         ocr_service = OCRService()
         extraction_service = ExtractionService()
@@ -146,14 +148,30 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
         bg_logger.info("✅ Services initialized")
     except Exception as e:
         bg_logger.error(f"❌ Failed to initialize services: {str(e)}", exc_info=True)
+        # Update status to failed before returning
+        try:
+            document = db.query(Document).filter(Document.id == doc_id).first()
+            if document:
+                document.status = 'failed'
+                db.commit()
+                bg_logger.info(f"✅ Updated document {doc_id} status to 'failed' due to service initialization error")
+                try:
+                    from routes.websocket import broadcast_status_update_sync
+                    broadcast_status_update_sync(doc_id, 'failed', f'Service initialization failed: {str(e)}')
+                except:
+                    pass
+        except Exception as e2:
+            bg_logger.error(f"❌ Failed to update status on service init error: {str(e2)}", exc_info=True)
+        finally:
+            db.close()
         return
     
-    db = SessionLocal()
     try:
         # Update status to processing
         document = db.query(Document).filter(Document.id == doc_id).first()
         if not document:
             bg_logger.error(f"❌ Document {doc_id} not found in database")
+            db.close()
             return
         
         bg_logger.info(f"📄 Found document: {document.filename}")
@@ -230,26 +248,52 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
         bg_logger.debug("=" * 60)
         
         # Save extracted fields
-        for field_name, field_data in extracted_fields.items():
-            # Ensure page_number is a valid integer (not None)
-            page_num = field_data.get('page_number')
-            if page_num is None or not isinstance(page_num, int) or page_num < 1:
-                page_num = 1
-                bg_logger.warning(f"⚠️  Invalid page_number for field '{field_name}': {field_data.get('page_number')}, defaulting to 1")
+        try:
+            for field_name, field_data in extracted_fields.items():
+                # Ensure page_number is a valid integer (not None)
+                page_num = field_data.get('page_number')
+                if page_num is None or not isinstance(page_num, int) or page_num < 1:
+                    page_num = 1
+                    bg_logger.warning(f"⚠️  Invalid page_number for field '{field_name}': {field_data.get('page_number')}, defaulting to 1")
+                
+                extracted_field = ExtractedField(
+                    doc_id=doc_id,
+                    field_name=field_name,
+                    raw_value=field_data.get('raw_value'),
+                    normalized_value=field_data.get('normalized_value'),
+                    confidence_score=field_data.get('confidence'),
+                    page_number=page_num
+                )
+                db.add(extracted_field)
+                bg_logger.debug(f"💾 Saving field '{field_name}' with page_number={page_num}")
             
-            extracted_field = ExtractedField(
-                doc_id=doc_id,
-                field_name=field_name,
-                raw_value=field_data.get('raw_value'),
-                normalized_value=field_data.get('normalized_value'),
-                confidence_score=field_data.get('confidence'),
-                page_number=page_num
-            )
-            db.add(extracted_field)
-            bg_logger.debug(f"💾 Saving field '{field_name}' with page_number={page_num}")
-        
-        db.commit()
-        bg_logger.info("✅ Extracted fields saved to database")
+            db.commit()
+            bg_logger.info("✅ Extracted fields saved to database")
+        except Exception as e:
+            db.rollback()
+            bg_logger.error(f"❌ Error saving extracted fields: {str(e)}", exc_info=True)
+            # If it's a column missing error, log it but continue (fields might still save without page_number)
+            if 'page_number' in str(e).lower() or 'column' in str(e).lower():
+                bg_logger.warning("⚠️  page_number column might be missing. Trying to save fields without page_number...")
+                # Try saving without page_number as fallback
+                try:
+                    for field_name, field_data in extracted_fields.items():
+                        extracted_field = ExtractedField(
+                            doc_id=doc_id,
+                            field_name=field_name,
+                            raw_value=field_data.get('raw_value'),
+                            normalized_value=field_data.get('normalized_value'),
+                            confidence_score=field_data.get('confidence')
+                            # Skip page_number if column doesn't exist
+                        )
+                        db.add(extracted_field)
+                    db.commit()
+                    bg_logger.info("✅ Extracted fields saved (without page_number)")
+                except Exception as e2:
+                    bg_logger.error(f"❌ Failed to save fields even without page_number: {str(e2)}")
+                    raise  # Re-raise to trigger outer exception handler
+            else:
+                raise  # Re-raise other database errors
         
         # Broadcast extracting fields status
         try:
