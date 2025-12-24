@@ -382,49 +382,6 @@ export default function DocumentReviewPage() {
           )}
         </div>
 
-        {/* Mismatches Summary */}
-        {matchInfo && matchInfo.mismatches && matchInfo.mismatches.length > 0 && (
-          <div className="bg-red-50 border-l-4 border-red-500 shadow rounded p-5">
-            <h3 className="text-xl font-semibold mb-4 text-red-700">
-              ⚠️ Mismatches Detected
-            </h3>
-            <div className="space-y-3">
-              {matchInfo.mismatches.map((mismatch, idx) => (
-                <div key={idx} className="bg-white rounded p-4 border border-red-200">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900 capitalize mb-1">
-                        {mismatch.field === 'dob' ? 'Date of Birth' : mismatch.field === 'doa' ? 'Date of Accident' : mismatch.field}
-                      </p>
-                      <div className="grid grid-cols-2 gap-4 mt-2">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Expected Value</p>
-                          <p className="text-sm font-medium text-gray-700">
-                            {formatDateToMMDDYYYY(mismatch.expected_value || 'N/A')}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Observed Value</p>
-                          <p className="text-sm font-medium text-red-700">
-                            {formatDateToMMDDYYYY(mismatch.observed_value || 'N/A')}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {mismatch.page_number && (
-                      <div className="ml-4 bg-red-100 px-3 py-1 rounded">
-                        <p className="text-xs font-semibold text-red-700">
-                          Page {mismatch.page_number}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Match Info */}
         <div className="bg-white shadow rounded p-5">
           <h3 className="text-xl font-semibold mb-4">Match Information</h3>
