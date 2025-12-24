@@ -141,29 +141,34 @@ export default function DocumentReviewPage() {
       const token = localStorage.getItem('auth_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       
-      // Get signed URL from backend
-      const response = await fetch(
-        `${API_BASE_URL}/documents/${doc.doc_id || doc.id}/view`,
-        {
-          headers: {
-            ...authHeaders,
-            'Content-Type': 'application/json'
-          }
+      // Build the URL with token for authentication
+      const viewUrl = `${API_BASE_URL}/documents/${doc.doc_id || doc.id}/view`;
+      
+      // Open PDF in new tab - the backend will stream it directly
+      // We'll append the token to the URL since we can't set headers in window.open
+      // Better approach: create a blob URL from the response
+      const response = await fetch(viewUrl, {
+        headers: {
+          ...authHeaders,
         }
-      );
+      });
       
       if (!response.ok) {
-        throw new Error(`Failed to get PDF URL: ${response.statusText}`);
+        throw new Error(`Failed to load PDF: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      // Get the file as a blob
+      const blob = await response.blob();
       
-      if (data.view_url) {
-        // Open PDF in new tab
-        window.open(data.view_url, '_blank');
-      } else {
-        throw new Error("PDF URL not available");
-      }
+      // Create a blob URL and open it in a new tab
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      
+      // Clean up the blob URL after a delay (browser will keep it while tab is open)
+      setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
     } catch (error) {
       console.error("Error viewing PDF:", error);
       await openModal({
