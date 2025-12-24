@@ -1,25 +1,42 @@
 """
 Main FastAPI application.
 """
+import os
+import asyncio
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Configure logging FIRST, before any other imports
+from logging_config import setup_logging
+
+# Get log level from environment or default to INFO
+log_level = os.getenv("LOG_LEVEL", "INFO")
+setup_logging(log_level=log_level)
+
+# Now import routes and other modules
 from routes import documents_router, clients_router, exports_router, matches_router, stats_router
 from routes.auth import router as auth_router
 from routes.websocket import router as websocket_router, process_message_queue
 from database.models import Base
 from database.connection import engine
-import os
-import asyncio
-from dotenv import load_dotenv
 
+# Create logger for this module
+logger = logging.getLogger(__name__)
+
+logger.info("Loading environment variables...")
 load_dotenv()
+logger.info("Environment variables loaded")
 
 # Create database tables (with error handling for deployment)
 try:
+    logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
 except Exception as e:
-    print(f"Warning: Could not create database tables: {e}")
-    print("Database tables will be created when database is available.")
+    logger.warning(f"Could not create database tables: {e}")
+    logger.warning("Database tables will be created when database is available.")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -37,6 +54,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all incoming requests."""
+    import time
+    start_time = time.time()
+    
+    # Log request
+    logger.info(f"📥 {request.method} {request.url.path}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Log response
+    process_time = time.time() - start_time
+    logger.info(f"📤 {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}s")
+    
+    return response
+
 # Include routers
 # Auth router (public - no auth required)
 app.include_router(auth_router)
@@ -52,7 +88,9 @@ app.include_router(websocket_router)
 @app.on_event("startup")
 async def startup_event():
     """Startup event to initialize background tasks."""
+    logger.info("Starting up application...")
     asyncio.create_task(process_message_queue())
+    logger.info("Background tasks initialized")
 
 
 @app.get("/")

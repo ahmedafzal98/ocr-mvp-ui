@@ -15,6 +15,8 @@ export default function DocumentReviewPage() {
   const [exporting, setExporting] = useState(false);
   const { modal, openModal, closeModal } = useModal();
 
+
+  console.log("fields", fields);
   // Helper function to format dates to MM/DD/YYYY
   const formatDateToMMDDYYYY = (dateStr) => {
     if (!dateStr || dateStr === 'N/A' || dateStr === 'Not available') {

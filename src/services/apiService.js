@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Use environment variable for production, fallback to localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 // Create axios instance with interceptor to add auth token
 const api = axios.create({
@@ -64,7 +64,4 @@ export const uploadDataset = (file) => {
 };
 
 export const fetchDocuments = () => api.get("/documents/");
-export const fetchDocumentDetails = (doc_id) => api.get(`/documents/${doc_id}`);
-export const fetchExports = () => api.get("/exports/");
 export const fetchExportById = (doc_id) => api.get(`/exports/${doc_id}`);
-export const fetchStats = () => api.get("/stats/");

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import logging
 
+# Get logger - will inherit configuration from root logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -71,23 +72,21 @@ async def upload_document(
     }
     mime_type = mime_types.get(file_ext, 'application/octet-stream')
     
+    # Log upload start
+    logger.info(f"📤 Starting upload for file: {file.filename}")
+    
     try:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"📤 Starting upload for file: {file.filename}")
-        
         # Upload to GCS
         logger.info("☁️ Uploading to Google Cloud Storage...")
         try:
             gcs_uri = ocr_service.upload_to_gcs(file_content, file.filename)
             logger.info(f"✅ Uploaded to GCS: {gcs_uri}")
         except Exception as e:
-            logger.error(f"❌ GCS upload failed: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"❌ GCS upload failed: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to upload to GCS: {str(e)}")
         
         # Create document record
+        logger.info("💾 Creating document record in database...")
         document = Document(
             filename=file.filename,
             gcs_uri=gcs_uri,
@@ -113,11 +112,7 @@ async def upload_document(
     except HTTPException:
         raise
     except Exception as e:
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
-        logger.error(f"❌ Error uploading document: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"❌ Error uploading document: {str(e)}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error uploading document: {str(e)}")
 
@@ -126,14 +121,17 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
     """
     Background task to process document.
     """
-    import logging
     import traceback
     
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
+    # Get logger for background task (use module logger)
+    bg_logger = logging.getLogger(__name__)
     
-    logger.info(f"🚀 Starting background task for document {doc_id}")
-    logger.info(f"GCS URI: {gcs_uri}, MIME type: {mime_type}")
+    bg_logger.info("=" * 80)
+    bg_logger.info("🔍 BACKGROUND TASK STARTED - PROCESSING DOCUMENT")
+    bg_logger.info("=" * 80)
+    
+    bg_logger.info(f"🚀 Starting background task for document {doc_id}")
+    bg_logger.info(f"GCS URI: {gcs_uri}, MIME type: {mime_type}")
     
     from database.connection import SessionLocal
     from services.ocr_service import OCRService
@@ -145,10 +143,9 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
         ocr_service = OCRService()
         extraction_service = ExtractionService()
         matching_service = MatchingService()
-        logger.info("✅ Services initialized")
+        bg_logger.info("✅ Services initialized")
     except Exception as e:
-        logger.error(f"❌ Failed to initialize services: {str(e)}")
-        logger.error(traceback.format_exc())
+        bg_logger.error(f"❌ Failed to initialize services: {str(e)}", exc_info=True)
         return
     
     db = SessionLocal()
@@ -156,31 +153,31 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
         # Update status to processing
         document = db.query(Document).filter(Document.id == doc_id).first()
         if not document:
-            logger.error(f"❌ Document {doc_id} not found in database")
+            bg_logger.error(f"❌ Document {doc_id} not found in database")
             return
         
-        logger.info(f"📄 Found document: {document.filename}")
+        bg_logger.info(f"📄 Found document: {document.filename}")
         document.status = 'processing'
         db.commit()
-        logger.info("✅ Status updated to 'processing'")
+        bg_logger.info("✅ Status updated to 'processing'")
         
         # Broadcast status update
         try:
             from routes.websocket import broadcast_status_update_sync
             broadcast_status_update_sync(doc_id, 'processing', 'Processing document...')
-            logger.info("✅ Status broadcast sent")
+            bg_logger.debug("✅ Status broadcast sent")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to broadcast status: {str(e)}")
+            bg_logger.warning(f"⚠️ Failed to broadcast status: {str(e)}")
         
         # Run OCR
-        logger.info("🔍 Starting OCR processing...")
-        logger.info(f"📋 Using Document AI Processor: {ocr_service.processor_name}")
+        bg_logger.info("🔍 Starting OCR processing...")
+        bg_logger.info(f"📋 Using Document AI Processor: {ocr_service.processor_name}")
         ocr_result = ocr_service.process_document_from_gcs(gcs_uri)
-        logger.info(f"OCR result success: {ocr_result.get('success')}")
+        bg_logger.debug(f"OCR result success: {ocr_result.get('success')}")
         
         if not ocr_result.get('success'):
             error_msg = ocr_result.get('error', 'Unknown OCR error')
-            logger.error(f"❌ OCR processing failed: {error_msg}")
+            bg_logger.error(f"❌ OCR processing failed: {error_msg}")
             document.status = 'failed'
             db.commit()
             try:
@@ -193,59 +190,66 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
         # Log OCR results
         full_text = ocr_result.get('full_text', '')
         entities = ocr_result.get('entities', {})
-        logger.info(f"📄 OCR extracted {len(full_text)} characters of text")
-        logger.info(f"📋 OCR found {len(entities)} entities: {list(entities.keys())}")
+        bg_logger.info(f"📄 OCR extracted {len(full_text)} characters of text")
+        bg_logger.info(f"📋 OCR found {len(entities)} entities: {list(entities.keys())}")
         
-        # Print first 500 chars of OCR text for debugging
+        # Log first 500 chars of OCR text for debugging
         if full_text:
             preview = full_text[:500].replace('\n', '\\n')
-            logger.info(f"📝 OCR Text Preview (first 500 chars): {preview}")
+            bg_logger.debug(f"📝 OCR Text Preview (first 500 chars): {preview}")
         
-        # Print entities found with page numbers
+        # Log entities found with page numbers
         if entities:
-            logger.info("📋 Entities from Document AI:")
+            bg_logger.debug("📋 Entities from Document AI:")
             entity_pages = ocr_result.get('entity_pages', {})
             for entity_type, entity_data in entities.items():
                 page_num = entity_pages.get(entity_type, entity_data.get('page_number', 1))
-                logger.info(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})")
+                print(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})", flush=True)
+                bg_logger.debug(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})")
         
         # Extract fields
-        logger.info("📝 Extracting fields from OCR result...")
+        bg_logger.info("📝 Extracting fields from OCR result...")
         extracted_fields = extraction_service.extract_fields(ocr_result)
-        logger.info(f"✅ Extracted {len(extracted_fields)} fields: {list(extracted_fields.keys())}")
+        bg_logger.info(f"✅ Extracted {len(extracted_fields)} fields: {list(extracted_fields.keys())}")
         
-        # PRINT EXTRACTED FIELDS FOR VERIFICATION
-        logger.info("=" * 60)
-        logger.info("📊 EXTRACTED FIELDS DETAIL:")
-        logger.info("=" * 60)
+        # Log extracted fields detail
+        bg_logger.debug("=" * 60)
+        bg_logger.debug("📊 EXTRACTED FIELDS DETAIL:")
+        bg_logger.debug("=" * 60)
         if extracted_fields:
             for field_name, field_data in extracted_fields.items():
-                logger.info(f"  Field: {field_name}")
-                logger.info(f"    Raw Value: {field_data.get('raw_value', 'N/A')}")
-                logger.info(f"    Normalized Value: {field_data.get('normalized_value', 'N/A')}")
-                logger.info(f"    Confidence: {field_data.get('confidence', 0)}")
-                logger.info(f"    Page Number: {field_data.get('page_number', 1)}")
-                logger.info("")
+                bg_logger.debug(f"  Field: {field_name}")
+                bg_logger.debug(f"    Raw Value: {field_data.get('raw_value', 'N/A')}")
+                bg_logger.debug(f"    Normalized Value: {field_data.get('normalized_value', 'N/A')}")
+                bg_logger.debug(f"    Confidence: {field_data.get('confidence', 0)}")
+                bg_logger.debug(f"    Page Number: {field_data.get('page_number', 1)}")
         else:
-            logger.warning("⚠️  NO FIELDS EXTRACTED!")
-            logger.warning(f"   Full text length: {len(full_text)}")
-            logger.warning(f"   Entities found: {len(entities)}")
-        logger.info("=" * 60)
+            bg_logger.warning("⚠️  NO FIELDS EXTRACTED!")
+            bg_logger.warning(f"   Full text length: {len(full_text)}")
+            bg_logger.warning(f"   Entities found: {len(entities)}")
+        bg_logger.debug("=" * 60)
         
         # Save extracted fields
         for field_name, field_data in extracted_fields.items():
+            # Ensure page_number is a valid integer (not None)
+            page_num = field_data.get('page_number')
+            if page_num is None or not isinstance(page_num, int) or page_num < 1:
+                page_num = 1
+                bg_logger.warning(f"⚠️  Invalid page_number for field '{field_name}': {field_data.get('page_number')}, defaulting to 1")
+            
             extracted_field = ExtractedField(
                 doc_id=doc_id,
                 field_name=field_name,
                 raw_value=field_data.get('raw_value'),
                 normalized_value=field_data.get('normalized_value'),
                 confidence_score=field_data.get('confidence'),
-                page_number=field_data.get('page_number', 1)  # Save page number
+                page_number=page_num
             )
             db.add(extracted_field)
+            bg_logger.debug(f"💾 Saving field '{field_name}' with page_number={page_num}")
         
         db.commit()
-        logger.info("✅ Extracted fields saved to database")
+        bg_logger.info("✅ Extracted fields saved to database")
         
         # Broadcast extracting fields status
         try:
@@ -255,24 +259,24 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
             pass
         
         # Match against client profiles
-        logger.info("🔍 Matching against client profiles...")
+        bg_logger.info("🔍 Matching against client profiles...")
         matched_client_id, match_score, decision = matching_service.match_document(
             db, doc_id, extracted_fields
         )
-        logger.info(f"✅ Match result: client_id={matched_client_id}, score={match_score}, decision={decision}")
+        bg_logger.info(f"✅ Match result: client_id={matched_client_id}, score={match_score}, decision={decision}")
         
         # Detect mismatches
         if matched_client_id:
-            logger.info("🔍 Detecting mismatches...")
+            bg_logger.info("🔍 Detecting mismatches...")
             mismatches = matching_service.detect_mismatches(
                 db, doc_id, matched_client_id, extracted_fields
             )
-            logger.info(f"✅ Found {len(mismatches)} mismatches")
+            bg_logger.info(f"✅ Found {len(mismatches)} mismatches")
         
         # Update status
         document.status = 'completed'
         db.commit()
-        logger.info("✅ Document processing completed successfully!")
+        bg_logger.info("✅ Document processing completed successfully!")
         
         # Broadcast completion
         try:
@@ -282,8 +286,7 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
             pass
         
     except Exception as e:
-        logger.error(f"❌ Error processing document {doc_id}: {str(e)}")
-        logger.error(traceback.format_exc())
+        bg_logger.error(f"❌ Error processing document {doc_id}: {str(e)}", exc_info=True)
         # Update status to failed
         try:
             document = db.query(Document).filter(Document.id == doc_id).first()
@@ -293,10 +296,10 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
                 from routes.websocket import broadcast_status_update_sync
                 broadcast_status_update_sync(doc_id, 'failed', f'Processing failed: {str(e)}')
         except Exception as e2:
-            logger.error(f"❌ Failed to update status: {str(e2)}")
+            bg_logger.error(f"❌ Failed to update status: {str(e2)}", exc_info=True)
     finally:
         db.close()
-        logger.info(f"🏁 Background task completed for document {doc_id}")
+        bg_logger.info(f"🏁 Background task completed for document {doc_id}")
 
 
 @router.get("/")
@@ -305,10 +308,22 @@ def list_documents(
     current_user: dict = Depends(get_current_user)
 ):
     """List all documents."""
+    logger.info("📋 Listing all documents")
+    
     try:
+        logger.debug("🔍 Querying database for documents...")
         documents = db.query(Document).order_by(Document.created_at.desc()).all()
         
-        return {
+        logger.info(f"✅ Found {len(documents)} documents in database")
+        
+        # Log document statuses
+        status_counts = {}
+        for doc in documents:
+            status_counts[doc.status] = status_counts.get(doc.status, 0) + 1
+        
+        logger.debug(f"📊 Document status breakdown: {status_counts}")
+        
+        result = {
             "documents": [
                 {
                     "doc_id": doc.id,
@@ -320,10 +335,12 @@ def list_documents(
                 for doc in documents
             ]
         }
+        
+        logger.info(f"✅ Returning {len(result['documents'])} documents to client")
+        
+        return result
     except Exception as e:
-        logger.error(f"❌ Error listing documents: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"❌ Error listing documents: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Database connection error: {str(e)}. Please check database environment variables (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME) are set correctly."
@@ -406,7 +423,7 @@ def get_extracted_fields(
                 "value_raw": field.raw_value,
                 "value_norm": field.normalized_value,
                 "confidence": field.confidence_score,
-                "page_num": field.page_number if field.page_number else 1
+                "page_num": field.page_number
             }
             for field in fields
         ]

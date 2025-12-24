@@ -109,14 +109,13 @@ class OCRService:
             full_text = document.text if hasattr(document, 'text') else ''
             entities = {}
             
-            import logging
-            ocr_logger = logging.getLogger(__name__)
-            ocr_logger.info(f"📄 Document AI returned text length: {len(full_text)}")
-            ocr_logger.info(f"📋 Document has entities: {hasattr(document, 'entities')}")
+            # Use print() for visibility in terminal
+            print(f"📄 Document AI returned text length: {len(full_text)}")
+            print(f"📋 Document has entities: {hasattr(document, 'entities')}")
             
             if hasattr(document, 'entities'):
                 entity_list = list(document.entities) if document.entities else []
-                ocr_logger.info(f"📋 Processing {len(entity_list)} entities from Document AI")
+                print(f"📋 Processing {len(entity_list)} entities from Document AI")
                 
                 # Map to track page numbers for each entity type
                 entity_pages = {}
@@ -135,90 +134,169 @@ class OCRService:
                     
                     # Extract page number from entity
                     # Document AI page numbers are 0-indexed, so we add 1
-                    if hasattr(entity, 'page_anchor') and entity.page_anchor:
-                        if hasattr(entity.page_anchor, 'page_refs') and entity.page_anchor.page_refs:
-                            # Get first page reference
-                            page_ref = entity.page_anchor.page_refs[0]
-                            if hasattr(page_ref, 'page'):
-                                # page_ref.page can be:
-                                # 1. An integer (0-indexed page number)
-                                # 2. A string like "projects/.../pages/1"
-                                # 3. A Page object with page_number attribute
+                    # According to official guidance: entity.page_anchor.page_refs[].page
+                    page_number = None  # Start with None, not 1
+                    
+                    # Method 1: Try page_anchor (most reliable - per official guidance)
+                    # According to DOCUMENT_AI_PAGE_NUMBER_GUIDANCE.md: entity.page_anchor.page_refs[].page
+                    try:
+                        if hasattr(entity, 'page_anchor') and entity.page_anchor:
+                            # Use getattr to safely access protobuf attributes
+                            page_refs = getattr(entity.page_anchor, 'page_refs', None)
+                            if not page_refs:
+                                # Try alternative attribute names
+                                page_refs = getattr(entity.page_anchor, 'pageRefs', None)
+                            
+                            if page_refs and len(page_refs) > 0:
+                                # Get first page reference
+                                page_ref = page_refs[0]
                                 
-                                page_value = page_ref.page
+                                # Try multiple ways to access the page value (protobuf can be tricky)
+                                page_value = None
                                 
-                                # Case 1: Direct integer (0-indexed)
-                                if isinstance(page_value, int):
-                                    page_number = page_value + 1  # Convert to 1-indexed
-                                # Case 2: String format
-                                elif isinstance(page_value, str):
-                                    import re
-                                    page_match = re.search(r'pages[/-](\d+)', page_value)
-                                    if page_match:
-                                        # Extract and convert (may be 0-indexed or 1-indexed)
-                                        extracted_page = int(page_match.group(1))
-                                        # If it's 0, assume 0-indexed; otherwise assume 1-indexed
-                                        page_number = extracted_page + 1 if extracted_page == 0 else extracted_page
-                                    else:
-                                        # Try direct conversion
-                                        try:
-                                            page_num = int(page_value)
-                                            page_number = page_num + 1 if page_num == 0 else page_num
-                                        except:
-                                            page_number = 1
-                                # Case 3: Page object with page_number attribute
-                                elif hasattr(page_value, 'page_number'):
-                                    page_num = page_value.page_number
-                                    page_number = page_num + 1 if isinstance(page_num, int) and page_num == 0 else (page_num if isinstance(page_num, int) else 1)
+                                # Method 1: Try direct attribute access
+                                if hasattr(page_ref, 'page'):
+                                    try:
+                                        page_value = page_ref.page
+                                        print(f"   Entity {idx+1}: ✅ Accessed page_ref.page directly: {page_value} (type: {type(page_value)})")
+                                    except Exception as e:
+                                        print(f"   Entity {idx+1}: Direct access failed: {str(e)}")
+                                
+                                # Method 2: Try getattr
+                                if page_value is None:
+                                    page_value = getattr(page_ref, 'page', None)
+                                    if page_value is not None:
+                                        print(f"   Entity {idx+1}: ✅ Accessed via getattr(page_ref, 'page'): {page_value}")
+                                
+                                # Method 3: Try alternative attribute names (camelCase)
+                                if page_value is None:
+                                    page_value = getattr(page_ref, 'pageNumber', None)
+                                    if page_value is not None:
+                                        print(f"   Entity {idx+1}: ✅ Accessed via getattr(page_ref, 'pageNumber'): {page_value}")
+                                
+                                # Method 4: Try snake_case
+                                if page_value is None:
+                                    page_value = getattr(page_ref, 'page_number', None)
+                                    if page_value is not None:
+                                        print(f"   Entity {idx+1}: ✅ Accessed via getattr(page_ref, 'page_number'): {page_value}")
+                                
+                                # Method 5: Try accessing as protobuf message field (if it's a message)
+                                if page_value is None:
+                                    try:
+                                        # Protobuf messages can be accessed like dicts in some cases
+                                        if hasattr(page_ref, 'WhichOneof'):
+                                            # It's a protobuf message, try to get the page field
+                                            page_value = getattr(page_ref, 'page', None)
+                                        # Try accessing via _pb attribute (internal protobuf structure)
+                                        if page_value is None and hasattr(page_ref, '_pb'):
+                                            pb_obj = page_ref._pb
+                                            if hasattr(pb_obj, 'page'):
+                                                page_value = pb_obj.page
+                                    except Exception as e:
+                                        print(f"   Entity {idx+1}: Protobuf message access failed: {str(e)}")
+                                
+                                if page_value is not None:
+                                    # Case 1: Direct integer (0-indexed)
+                                    if isinstance(page_value, int):
+                                        page_number = page_value + 1  # Convert to 1-indexed
+                                        print(f"   Entity {idx+1}: ✅ Found page number from page_anchor (int): {page_number} (0-indexed: {page_value})")
+                                    # Case 2: String format (e.g., "projects/.../pages/1")
+                                    elif isinstance(page_value, str):
+                                        import re
+                                        page_match = re.search(r'pages[/-](\d+)', page_value)
+                                        if page_match:
+                                            extracted_page = int(page_match.group(1))
+                                            # If it's 0, assume 0-indexed; otherwise assume 1-indexed
+                                            page_number = extracted_page + 1 if extracted_page == 0 else extracted_page
+                                            print(f"   Entity {idx+1}: ✅ Found page number from page_anchor (string): {page_number} (extracted: {extracted_page})")
+                                        else:
+                                            # Try direct conversion
+                                            try:
+                                                page_num = int(page_value)
+                                                page_number = page_num + 1 if page_num == 0 else page_num
+                                                print(f"   Entity {idx+1}: ✅ Found page number from page_anchor (string->int): {page_number}")
+                                            except:
+                                                print(f"   Entity {idx+1}: ⚠️  Could not parse page number from string: {page_value}")
+                                    # Case 3: Page object with page_number attribute
+                                    elif hasattr(page_value, 'page_number'):
+                                        page_num = getattr(page_value, 'page_number', None)
+                                        if page_num is not None:
+                                            page_number = page_num + 1 if isinstance(page_num, int) and page_num == 0 else (page_num if isinstance(page_num, int) else None)
+                                            if page_number:
+                                                print(f"   Entity {idx+1}: ✅ Found page number from page_anchor (Page object): {page_number}")
                                 else:
-                                    # Fallback: try to get page number from text position
-                                    page_number = 1
-                            else:
-                                page_number = 1
-                        else:
-                            page_number = 1
-                    elif hasattr(entity, 'text_anchor') and entity.text_anchor:
-                        # Try to infer page from text position using text_anchor
-                        # Document AI text_anchor has text_segments with start_index
-                        # We can map this to pages by checking which page the text belongs to
-                        if hasattr(entity.text_anchor, 'text_segments') and entity.text_anchor.text_segments:
-                            segment = entity.text_anchor.text_segments[0]
-                            if hasattr(segment, 'start_index'):
-                                text_index = segment.start_index
-                                # Map text index to page number using document.pages
-                                if hasattr(document, 'pages') and document.pages:
-                                    # Try to find which page contains this text index
-                                    found_page = False
-                                    for page_idx, page in enumerate(document.pages):
-                                        # Each page has a layout with text_anchor that defines its text range
-                                        if hasattr(page, 'layout') and hasattr(page.layout, 'text_anchor'):
-                                            if hasattr(page.layout.text_anchor, 'text_segments'):
-                                                for page_seg in page.layout.text_anchor.text_segments:
-                                                    if (hasattr(page_seg, 'start_index') and 
-                                                        hasattr(page_seg, 'end_index')):
-                                                        if page_seg.start_index <= text_index <= page_seg.end_index:
-                                                            page_number = page_idx + 1  # 0-indexed to 1-indexed
-                                                            found_page = True
-                                                            ocr_logger.info(f"   Entity {idx+1}: Mapped text index {text_index} to page {page_number} (page_idx={page_idx})")
-                                                            break
-                                                if found_page:
-                                                    break
-                                    if not found_page:
-                                        ocr_logger.warning(f"   Entity {idx+1}: Could not map text index {text_index} to page, defaulting to page 1")
-                                        page_number = 1
-                                else:
-                                    page_number = 1
-                            else:
-                                page_number = 1
-                        else:
-                            page_number = 1
-                    else:
+                                    # Debug: Print all attributes of page_ref to understand the structure
+                                    page_ref_attrs = [x for x in dir(page_ref) if not x.startswith('_')]
+                                    print(f"   Entity {idx+1}: ⚠️  page_ref.page is None or not accessible.")
+                                    print(f"   Entity {idx+1}: page_ref type: {type(page_ref)}, available attrs: {page_ref_attrs[:20]}")
+                                    # Try to access page_ref as a dict-like object (protobuf can be accessed this way)
+                                    try:
+                                        if hasattr(page_ref, '__dict__'):
+                                            print(f"   Entity {idx+1}: page_ref.__dict__: {page_ref.__dict__}")
+                                    except:
+                                        pass
+                    except Exception as e:
+                        print(f"   Entity {idx+1}: ⚠️  Error accessing page_anchor: {str(e)}")
+                        import traceback
+                        print(f"   Entity {idx+1}: Traceback: {traceback.format_exc()}")
+                    
+                    # Method 2: Fallback to text_anchor mapping if page_anchor didn't work
+                    if page_number is None:
+                        try:
+                            if hasattr(entity, 'text_anchor') and entity.text_anchor:
+                                # Try to infer page from text position using text_anchor
+                                # Document AI text_anchor has text_segments with start_index
+                                # We can map this to pages by checking which page the text belongs to
+                                text_segments = getattr(entity.text_anchor, 'text_segments', None)
+                                if text_segments and len(text_segments) > 0:
+                                    segment = text_segments[0]
+                                    text_index = getattr(segment, 'start_index', None)
+                                    if text_index is not None:
+                                        # Map text index to page number using document.pages
+                                        if hasattr(document, 'pages') and document.pages:
+                                            # Try to find which page contains this text index
+                                            found_page = False
+                                            for page_idx, page in enumerate(document.pages):
+                                                # Each page has a layout with text_anchor that defines its text range
+                                                page_layout = getattr(page, 'layout', None)
+                                                if page_layout:
+                                                    layout_text_anchor = getattr(page_layout, 'text_anchor', None)
+                                                    if layout_text_anchor:
+                                                        layout_segments = getattr(layout_text_anchor, 'text_segments', None)
+                                                        if layout_segments:
+                                                            for page_seg in layout_segments:
+                                                                seg_start = getattr(page_seg, 'start_index', None)
+                                                                seg_end = getattr(page_seg, 'end_index', None)
+                                                                if seg_start is not None and seg_end is not None:
+                                                                    if seg_start <= text_index <= seg_end:
+                                                                        page_number = page_idx + 1  # 0-indexed to 1-indexed
+                                                                        found_page = True
+                                                                        print(f"   Entity {idx+1}: Mapped text index {text_index} to page {page_number} (page_idx={page_idx})")
+                                                                        break
+                                                            if found_page:
+                                                                break
+                                            if not found_page:
+                                                print(f"   Entity {idx+1}: Could not map text index {text_index} to page")
+                        except Exception as e:
+                            print(f"   Entity {idx+1}: Error accessing text_anchor: {str(e)}")
+                    
+                    # Default to 1 only if all methods failed
+                    if page_number is None:
                         page_number = 1
+                        print(f"   Entity {idx+1}: ⚠️  Could not extract page number, defaulting to 1")
+                        # Additional debug info
+                        print(f"   Entity {idx+1}: Entity has page_anchor: {hasattr(entity, 'page_anchor')}")
+                        if hasattr(entity, 'page_anchor'):
+                            print(f"   Entity {idx+1}: page_anchor type: {type(entity.page_anchor)}")
+                        print(f"   Entity {idx+1}: Entity has text_anchor: {hasattr(entity, 'text_anchor')}")
+                        print(f"   Entity {idx+1}: Document has pages: {hasattr(document, 'pages') and document.pages is not None}")
+                        if hasattr(document, 'pages') and document.pages:
+                            print(f"   Entity {idx+1}: Document has {len(document.pages)} pages")
                     
                     # PRIORITY: Use mention_text first (most reliable, like old code)
                     if hasattr(entity, 'mention_text') and entity.mention_text:
                         entity_value = entity.mention_text
-                        ocr_logger.info(f"   Entity {idx+1}: Using mention_text for {entity_type}")
+                        print(f"   Entity {idx+1}: Using mention_text for {entity_type}")
                     
                     # Fallback: Try text_anchor with text_segments
                     if not entity_value and hasattr(entity, 'text_anchor') and entity.text_anchor:
@@ -229,7 +307,7 @@ class OCRService:
                                     end = segment.end_index
                                     if hasattr(document, 'text') and document.text:
                                         entity_value = document.text[start:end]
-                                        ocr_logger.info(f"   Entity {idx+1}: Using text_segments for {entity_type}")
+                                        print(f"   Entity {idx+1}: Using text_segments for {entity_type}")
                                         break
                         # Method 2: text_anchor.content (if available)
                         elif hasattr(entity.text_anchor, 'content'):
@@ -245,21 +323,28 @@ class OCRService:
                     elif hasattr(entity, 'confidence_score'):
                         confidence = entity.confidence_score
                     
-                    ocr_logger.info(f"   Entity {idx+1}: type={entity_type}, value={entity_value[:50] if entity_value else 'N/A'}, confidence={confidence:.2f}, page={page_number}")
+                    print(f"   Entity {idx+1}: type={entity_type}, value={entity_value[:50] if entity_value else 'N/A'}, confidence={confidence:.2f}, page={page_number}")
                     
                     if entity_type and entity_value:
                         # Keep the entity with highest confidence if duplicate types
+                        # IMPORTANT: When updating, preserve the page_number from the new entity
                         if entity_type not in entities or entities[entity_type].get('confidence', 0) < confidence:
                             entities[entity_type] = {
                                 'value': entity_value,
                                 'confidence': confidence,
-                                'page_number': page_number
+                                'page_number': page_number  # Store the actual page number from this entity
                             }
-                            entity_pages[entity_type] = page_number
+                            entity_pages[entity_type] = page_number  # Also store in the map
+                            print(f"   ✅ Stored entity '{entity_type}' with page_number={page_number} (confidence={confidence:.2f})")
+                        else:
+                            # Log when we skip an entity due to lower confidence
+                            existing_page = entities[entity_type].get('page_number', 'N/A')
+                            existing_confidence = entities[entity_type].get('confidence', 0)
+                            print(f"   ⏭️  Skipped entity '{entity_type}' (lower confidence: {confidence:.2f} < {existing_confidence:.2f}), keeping page_number={existing_page}")
             else:
-                ocr_logger.warning("⚠️  Document does not have 'entities' attribute")
+                print("⚠️  Document does not have 'entities' attribute")
             
-            ocr_logger.info(f"✅ Processed {len(entities)} unique entity types: {list(entities.keys())}")
+            print(f"✅ Processed {len(entities)} unique entity types: {list(entities.keys())}")
 
             return {
                 'full_text': full_text,

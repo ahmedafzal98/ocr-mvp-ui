@@ -50,23 +50,27 @@ class ExtractionService:
         Returns:
             Dictionary of extracted fields with raw_value, normalized_value, confidence, and page_number
         """
-        import logging
-        extract_logger = logging.getLogger(__name__)
-        
+        # Use print() for visibility in terminal
         full_text = ocr_result.get('full_text', '')
         entities = ocr_result.get('entities', {})
         entity_pages = ocr_result.get('entity_pages', {})  # Map of entity_type -> page_number
         
-        extract_logger.info(f"🔍 Starting field extraction...")
-        extract_logger.info(f"   Full text length: {len(full_text)}")
-        extract_logger.info(f"   Entities from Document AI: {len(entities)}")
-        extract_logger.info(f"   Entity pages map: {entity_pages}")
+        print(f"🔍 Starting field extraction...")
+        print(f"   Full text length: {len(full_text)}")
+        print(f"   Entities from Document AI: {len(entities)}")
+        print(f"   Entity pages map: {entity_pages}")
+        # Log each entity's page number for debugging
+        if entities:
+            print(f"   Entity page numbers from entities dict:")
+            for entity_type, entity_data in entities.items():
+                page_num = entity_data.get('page_number', 'N/A')
+                print(f"     - {entity_type}: page_number={page_num}")
         
         extracted = {}
         
         # PRIORITY 1: Extract from Document AI entities first (most reliable)
         if entities:
-            extract_logger.info("📋 Extracting from Document AI entities...")
+            print("📋 Extracting from Document AI entities...")
             
             # Key mapping from Document AI entity types to our field names
             key_map = {
@@ -98,7 +102,15 @@ class ExtractionService:
                 entity_value = entity_data.get('value', '')
                 confidence = entity_data.get('confidence', 0.8)
                 # Get page number from entity_pages map or entity_data, default to 1
-                page_number = entity_pages.get(entity_type, entity_data.get('page_number', 1))
+                # Try entity_pages first (most reliable), then entity_data, then default to 1
+                page_number = entity_pages.get(entity_type)
+                if page_number is None:
+                    page_number = entity_data.get('page_number')
+                if page_number is None:
+                    page_number = 1
+                    print(f"   ⚠️  Page number not found for '{entity_type}', defaulting to 1. entity_pages={entity_pages.get(entity_type)}, entity_data.page_number={entity_data.get('page_number')}")
+                else:
+                    print(f"   ✅ Page number lookup for '{entity_type}': entity_pages={entity_pages.get(entity_type)}, entity_data.page_number={entity_data.get('page_number')}, final={page_number}")
                 
                 # Map entity type to our field name
                 if entity_type_lower in key_map:
@@ -119,16 +131,22 @@ class ExtractionService:
                             extracted[mapped_key]['normalized_value'].append(normalized_date)
                     else:
                         # For other fields, use the one with highest confidence
+                        # IMPORTANT: When updating, preserve the page_number from the entity with higher confidence
                         if mapped_key not in extracted or extracted[mapped_key].get('confidence', 0) < confidence:
                             extracted[mapped_key] = {
                                 'raw_value': entity_value,
                                 'normalized_value': self._normalize_field_value(mapped_key, entity_value),
                                 'confidence': confidence,
-                                'page_number': page_number  # Include page number
+                                'page_number': page_number  # Include page number from this entity
                             }
-                            extract_logger.info(f"   ✅ {mapped_key} from entity '{entity_type}': {entity_value} (confidence: {confidence:.2f}, page: {page_number})")
+                            print(f"   ✅ {mapped_key} from entity '{entity_type}': {entity_value} (confidence: {confidence:.2f}, page: {page_number})")
+                        else:
+                            # Log when we skip due to lower confidence
+                            existing_page = extracted[mapped_key].get('page_number', 'N/A')
+                            existing_confidence = extracted[mapped_key].get('confidence', 0)
+                            print(f"   ⏭️  Skipped {mapped_key} from entity '{entity_type}' (lower confidence: {confidence:.2f} < {existing_confidence:.2f}), keeping page: {existing_page}")
                 else:
-                    extract_logger.debug(f"   ⚠️  Unmapped entity type: {entity_type} = {entity_value[:50]}")
+                    print(f"   ⚠️  Unmapped entity type: {entity_type} = {entity_value[:50]}")
             
             # Convert service_dates list to string for storage
             if "service_dates" in extracted and isinstance(extracted["service_dates"]["raw_value"], list):
@@ -136,43 +154,44 @@ class ExtractionService:
                 extracted["service_dates"]["normalized_value"] = "; ".join(extracted["service_dates"]["normalized_value"])
         
         # PRIORITY 2: Fallback to text pattern extraction for missing fields
-        extract_logger.info("📝 Checking for missing fields using text patterns...")
+        print("📝 Checking for missing fields using text patterns...")
         
         if 'patient_name' not in extracted:
             name_data = self._extract_name(full_text, {})
             if name_data:
                 name_data['page_number'] = 1  # Default to page 1 if extracted from text
                 extracted['patient_name'] = name_data
-                extract_logger.info(f"   ✅ patient_name from text: {name_data.get('raw_value')}")
+                print(f"   ✅ patient_name from text: {name_data.get('raw_value')}")
         
         if 'dob' not in extracted:
             dob_data = self._extract_dob(full_text, {})
             if dob_data:
                 dob_data['page_number'] = 1  # Default to page 1 if extracted from text
                 extracted['dob'] = dob_data
-                extract_logger.info(f"   ✅ dob from text: {dob_data.get('raw_value')}")
+                print(f"   ✅ dob from text: {dob_data.get('raw_value')}")
         
         if 'doa' not in extracted:
             doa_data = self._extract_doa(full_text, {})
             if doa_data:
                 doa_data['page_number'] = 1  # Default to page 1 if extracted from text
                 extracted['doa'] = doa_data
-                extract_logger.info(f"   ✅ doa from text: {doa_data.get('raw_value')}")
+                print(f"   ✅ doa from text: {doa_data.get('raw_value')}")
         
         if 'referral' not in extracted:
             referral_data = self._extract_referral(full_text, {})
             if referral_data:
                 referral_data['page_number'] = 1  # Default to page 1 if extracted from text
                 extracted['referral'] = referral_data
-                extract_logger.info(f"   ✅ referral from text: {referral_data.get('raw_value')}")
+                print(f"   ✅ referral from text: {referral_data.get('raw_value')}")
         
         # Log summary
-        extract_logger.info(f"✅ Extraction complete. Found {len(extracted)} fields")
+        print(f"✅ Extraction complete. Found {len(extracted)} fields")
         for field_name, field_data in extracted.items():
             raw_val = field_data.get('raw_value', 'N/A')
             if isinstance(raw_val, list):
                 raw_val = '; '.join(raw_val)
-            extract_logger.info(f"   ✅ {field_name}: {raw_val} (confidence: {field_data.get('confidence', 0):.2f})")
+            page_num = field_data.get('page_number', 'N/A')
+            print(f"   ✅ {field_name}: {raw_val} (confidence: {field_data.get('confidence', 0):.2f}, page: {page_num})")
         
         return extracted
     

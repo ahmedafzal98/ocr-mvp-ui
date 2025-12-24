@@ -1,4 +1,3 @@
-// App.jsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -69,4 +68,3 @@ function App() {
 }
 
 export default App;
-// Updated: Thu Dec 18 23:21:12 PKT 2025

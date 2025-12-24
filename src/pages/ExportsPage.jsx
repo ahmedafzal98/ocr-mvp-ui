@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { fetchDocuments } from "../services/documentService";
-import { fetchExportById } from "../services/apiService";
 import Navbar from "../components/Navbar";
 
 export default function ExportsPage() {
