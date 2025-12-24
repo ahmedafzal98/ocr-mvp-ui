@@ -204,7 +204,7 @@ def process_document_task(doc_id: int, gcs_uri: str, mime_type: str):
             entity_pages = ocr_result.get('entity_pages', {})
             for entity_type, entity_data in entities.items():
                 page_num = entity_pages.get(entity_type, entity_data.get('page_number', 1))
-                print(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})", flush=True)
+                print(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})")
                 bg_logger.debug(f"  - {entity_type}: {entity_data.get('value', 'N/A')} (confidence: {entity_data.get('confidence', 0)}, page: {page_num})")
         
         # Extract fields
@@ -423,7 +423,7 @@ def get_extracted_fields(
                 "value_raw": field.raw_value,
                 "value_norm": field.normalized_value,
                 "confidence": field.confidence_score,
-                "page_num": field.page_number
+                "page_num": field.page_number if field.page_number else 1
             }
             for field in fields
         ]

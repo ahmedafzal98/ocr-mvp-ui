@@ -29,6 +29,11 @@ logger.info("Loading environment variables...")
 load_dotenv()
 logger.info("Environment variables loaded")
 
+# Detect environment (local vs production)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local").lower()
+IS_PRODUCTION = ENVIRONMENT == "production" or os.getenv("PRODUCTION", "false").lower() == "true"
+logger.info(f"Environment: {ENVIRONMENT} (Production: {IS_PRODUCTION})")
+
 # Create database tables (with error handling for deployment)
 try:
     logger.info("Creating database tables...")
@@ -45,10 +50,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS based on environment
+if IS_PRODUCTION:
+    # In production, restrict to specific origins
+    allowed_origins = os.getenv("CORS_ORIGINS", "").split(",")
+    allowed_origins = [origin.strip() for origin in allowed_origins if origin.strip()]
+    if not allowed_origins:
+        logger.warning("⚠️  PRODUCTION mode but no CORS_ORIGINS set! Allowing all origins (not recommended)")
+        allowed_origins = ["*"]
+    logger.info(f"CORS allowed origins: {allowed_origins}")
+else:
+    # In local development, allow all origins
+    allowed_origins = ["*"]
+    logger.info("CORS: Allowing all origins (local development mode)")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

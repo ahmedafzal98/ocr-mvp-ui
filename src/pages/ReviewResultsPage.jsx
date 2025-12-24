@@ -5,6 +5,7 @@ import { fetchDocuments } from "../services/documentService";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
 import { useModal } from "../hooks/useModal";
+import { API_BASE_URL } from "../config/api";
 
 export default function ReviewResultsPage() {
   const [results, setResults] = useState([]);
@@ -23,7 +24,7 @@ export default function ReviewResultsPage() {
         const docsRes = await fetchDocuments();
         const docs = docsRes.documents;
 
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+        // API_BASE_URL is imported from config/api.js
         const token = localStorage.getItem('auth_token');
         const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
         
@@ -99,7 +100,7 @@ export default function ReviewResultsPage() {
         return;
       }
       
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+      // API_BASE_URL is imported from config/api.js
       const token = localStorage.getItem('auth_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       

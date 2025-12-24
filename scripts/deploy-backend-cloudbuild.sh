@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Cloud Run Deployment Script for Backend
-# Make sure you have gcloud CLI installed and authenticated
+# Cloud Run Deployment Script using Cloud Build (no local Docker required)
+# This script uses Google Cloud Build to build the image in the cloud
 
 set -e
 
@@ -20,53 +20,21 @@ if ! command -v gcloud &> /dev/null; then
     exit 1
 fi
 
-# Check if docker is installed
-if ! command -v docker &> /dev/null; then
-    echo "❌ Error: Docker is not installed. Please install it first."
-    echo "   Install from: https://docs.docker.com/get-docker/"
-    exit 1
-fi
-
-# Check if Docker daemon is running
-if ! docker ps &> /dev/null; then
-    echo "❌ Error: Docker daemon is not running."
-    echo ""
-    echo "   Please start Docker Desktop or Docker daemon:"
-    echo "   - macOS: Open Docker Desktop application"
-    echo "   - Linux: sudo systemctl start docker"
-    echo ""
-    echo "   Alternatively, you can use Cloud Build which doesn't require local Docker:"
-    echo "   Run: ./deploy-backend-cloudbuild.sh"
-    exit 1
-fi
-
 # Check if authenticated
 if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then
     echo "⚠️  Warning: Not authenticated with gcloud. Please run: gcloud auth login"
     exit 1
 fi
 
-echo "🔨 Building Docker image from ${BACKEND_DIR}..."
-cd "${BACKEND_DIR}"
+# Set the project
+echo "🔧 Setting GCP project to ${PROJECT_ID}..."
+gcloud config set project ${PROJECT_ID}
 
-# Configure Docker for GCR authentication
-echo "🔐 Configuring Docker authentication for GCR..."
-gcloud auth configure-docker --quiet
-
-# Build the image
-if ! docker build -t gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest .; then
-    echo "❌ Error: Docker build failed"
-    exit 1
-fi
-
-echo "📤 Pushing to Google Container Registry..."
-if ! docker push gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest; then
-    echo "❌ Error: Docker push failed"
-    echo "   Make sure you're authenticated: gcloud auth configure-docker"
-    exit 1
-fi
-
-echo "🚀 Deploying to Cloud Run..."
+# Enable required APIs
+echo "🔧 Enabling required APIs..."
+gcloud services enable cloudbuild.googleapis.com --quiet || true
+gcloud services enable run.googleapis.com --quiet || true
+gcloud services enable containerregistry.googleapis.com --quiet || true
 
 # Build env vars string - Required Google Cloud settings
 ENV_VARS="PROJECT_ID=${PROJECT_ID},LOCATION=us,PROCESSOR_ID=3bd2a3a3becdadcb,GCS_BUCKET_NAME=personal-injury-document-bucket"
@@ -80,6 +48,10 @@ if [ ! -z "$JWT_SECRET_KEY" ]; then
 else
   echo "⚠️  WARNING: JWT_SECRET_KEY not set! Using default (INSECURE for production)"
   echo "   Set JWT_SECRET_KEY environment variable before deploying for production"
+  read -p "Continue anyway? (y/n): " confirm
+  if [ "$confirm" != "y" ]; then
+    exit 1
+  fi
 fi
 
 # Add admin credentials (optional, will use defaults if not set)
@@ -117,6 +89,16 @@ fi
 if [ ! -z "$DB_NAME" ]; then
   ENV_VARS="${ENV_VARS},DB_NAME=${DB_NAME}"
 fi
+
+echo "🔨 Building Docker image using Cloud Build..."
+cd "${BACKEND_DIR}"
+
+# Submit build to Cloud Build
+gcloud builds submit \
+  --tag gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest \
+  --timeout=20m
+
+echo "🚀 Deploying to Cloud Run..."
 
 gcloud run deploy ${SERVICE_NAME} \
   --image gcr.io/${PROJECT_ID}/${SERVICE_NAME}:latest \

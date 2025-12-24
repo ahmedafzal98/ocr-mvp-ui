@@ -12,6 +12,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useModal } from "../hooks/useModal";
 import { useAuth } from "../contexts/AuthContext";
+import { API_BASE_URL, WS_BASE_URL } from "../config/api";
 
 export default function DocumentsPage() {
   const navigate = useNavigate();
@@ -29,8 +30,6 @@ export default function DocumentsPage() {
   const ws = useRef(null);
   const { modal, openModal, closeModal, showConfirm } = useModal();
   const { getAuthHeaders } = useAuth();
-  
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
   // --- Helper to calculate batch counts dynamically ---
   const getBatchCounts = (docs) => {
@@ -129,8 +128,7 @@ export default function DocumentsPage() {
     }, 30000);
 
     // --- WebSocket for real-time status updates ---
-    const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 
-      (window.location.protocol === "https:" ? "wss" : "ws") + "://127.0.0.1:8000";
+    // WS_BASE_URL is imported from config/api.js
     const token = localStorage.getItem('auth_token');
     const WS_URL = token ? `${WS_BASE_URL}/ws/status?token=${encodeURIComponent(token)}` : `${WS_BASE_URL}/ws/status`;
     

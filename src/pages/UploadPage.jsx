@@ -7,6 +7,7 @@ import { toast } from "react-toastify";
 import { useAuth } from "../contexts/AuthContext";
 import { uploadDocument } from "../services/apiService";
 import FullScreenLoader from "../components/FullScreenLoader";
+import { API_BASE_URL, WS_BASE_URL } from "../config/api";
 
 export default function UploadPage() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -18,11 +19,6 @@ export default function UploadPage() {
 
   const navigate = useNavigate();
   const { getAuthHeaders } = useAuth();
-  
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-  const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 
-    (window.location.protocol === "https:" ? "wss" : "ws") + "://" + 
-    (import.meta.env.VITE_API_BASE_URL ? new URL(import.meta.env.VITE_API_BASE_URL).host : "127.0.0.1:8000");
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');

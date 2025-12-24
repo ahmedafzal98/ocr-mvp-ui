@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
 import { useModal } from "../hooks/useModal";
-// Removed unused imports - using fetch directly for better error handling
+import { API_BASE_URL } from "../config/api";
 
 export default function DocumentReviewPage() {
   const { docId } = useParams();
@@ -54,7 +54,6 @@ export default function DocumentReviewPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
       const token = localStorage.getItem('auth_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       
@@ -139,7 +138,7 @@ export default function DocumentReviewPage() {
     setExporting(true);
     try {
       // Use apiService which includes auth headers
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+      // API_BASE_URL is imported from config/api.js
       const token = localStorage.getItem('auth_token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       
