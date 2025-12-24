@@ -13,6 +13,7 @@ export default function DocumentReviewPage() {
   const [doc, setDoc] = useState(null); // renamed
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [viewingPdf, setViewingPdf] = useState(false);
   const { modal, openModal, closeModal } = useModal();
 
 
@@ -131,6 +132,50 @@ export default function DocumentReviewPage() {
 
     fetchData();
   }, [docId]);
+
+  const handleViewPdf = async () => {
+    if (!doc) return;
+
+    setViewingPdf(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      
+      // Get signed URL from backend
+      const response = await fetch(
+        `${API_BASE_URL}/documents/${doc.doc_id || doc.id}/view`,
+        {
+          headers: {
+            ...authHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get PDF URL: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.view_url) {
+        // Open PDF in new tab
+        window.open(data.view_url, '_blank');
+      } else {
+        throw new Error("PDF URL not available");
+      }
+    } catch (error) {
+      console.error("Error viewing PDF:", error);
+      await openModal({
+        title: "Error Viewing PDF",
+        message: error.message || "Failed to load PDF. Please try again.",
+        type: "error",
+        confirmText: "OK",
+      });
+    } finally {
+      setViewingPdf(false);
+    }
+  };
 
   const handleExport = async () => {
     if (!doc) return;
@@ -288,6 +333,18 @@ export default function DocumentReviewPage() {
               className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded shadow"
             >
               Back to Dashboard
+            </button>
+
+            <button
+              onClick={handleViewPdf}
+              disabled={viewingPdf}
+              className={`px-4 py-2 rounded shadow text-white ${
+                viewingPdf
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
+            >
+              {viewingPdf ? "Loading..." : "📄 View PDF"}
             </button>
 
             <button
